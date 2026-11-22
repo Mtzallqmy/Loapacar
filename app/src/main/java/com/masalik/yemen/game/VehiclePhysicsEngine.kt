@@ -1,0 +1,681 @@
+package com.masalik.yemen.game
+
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sign
+import kotlin.math.sin
+
+data class ControlInputs(
+    val throttle: Float = 0f,
+    val brake: Float = 0f,
+    val steer: Float = 0f, // -1 (left) .. +1 (right)
+    val handbrake: Boolean = false
+)
+
+class VehiclePhysicsEngine {
+
+    var vehicleId: VehicleId = VehicleId.SHAHIQ
+        private set
+    var spec: VehicleSpec = VehicleFleetCatalog.specOf(VehicleId.SHAHIQ)
+        private set
+    var customization: VehicleCustomization = VehicleFleetCatalog.defaultCustomizations().getValue(VehicleId.SHAHIQ)
+        private set
+
+    var realismMode: DrivingRealismMode = DrivingRealismMode.SPORT
+    var weather: WeatherPreset = WeatherPreset.CLEAR
+    var wheelRotationRangeDeg: Int = 540
+    var steeringWheelStyle: SteeringWheelStyle = SteeringWheelStyle.EUROPEAN_LUXURY
+    var steeringAssistEnabled: Boolean = true
+
+    // Position & Orientation along road + world
+    var distanceAlongRoadM: Float = 60f
+        private set
+    var lateralOffsetM: Float = 2.85f // Right-hand lane default
+        private set
+    var totalDistanceDrivenM: Float = 0f
+        private set
+
+    var posX: Float = 0f
+        private set
+    var posY: Float = 0f
+        private set
+    var posZ: Float = 0f
+        private set
+    var headingRad: Float = 0f
+        private set
+    var headingOffsetFromRoadRad: Float = 0f
+        private set
+
+    var forwardSpeedMs: Float = 0f
+        private set
+    var lateralSpeedMs: Float = 0f
+        private set
+    var currentSteerInputNorm: Float = 0f
+        private set
+    var currentFrontSteerRad: Float = 0f
+        private set
+    var wheelRotationRad: Float = 0f
+        private set
+
+    var chassisPitchRad: Float = 0f
+        private set
+    var chassisRollRad: Float = 0f
+        private set
+    var suspensionBounceM: Float = 0f
+        private set
+    var driftSlipAngleDeg: Float = 0f
+        private set
+    var wiperPhaseRad: Float = 0f
+        private set
+
+    // Drivetrain & systems
+    var transmissionMode: String = "auto"
+    var autoShifter: AutomaticShifterState = AutomaticShifterState.D
+    var manualGearIndex: Int = 1
+    var drivetrainMode: DrivetrainMode = DrivetrainMode.FOUR_H
+    var diffLockActive: Boolean = false
+    var engineRunning: Boolean = true
+    var headlightBeamMode: HeadlightBeamMode = HeadlightBeamMode.LOW_BEAM
+    var headlightsOn: Boolean
+        get() = headlightBeamMode != HeadlightBeamMode.OFF
+        set(value) {
+            headlightBeamMode = if (value) HeadlightBeamMode.LOW_BEAM else HeadlightBeamMode.OFF
+        }
+    var wipersOn: Boolean = false
+    var leftIndicatorOn: Boolean = false
+    var rightIndicatorOn: Boolean = false
+    var cruiseControlEnabled: Boolean = false
+    var cruiseTargetKmh: Float = 60f
+
+    var assists: ElectronicAssistsState = ElectronicAssistsState()
+    var fuelLiters: Float = 85f
+    var damage: DamageState = DamageState()
+
+    // Race rival
+    var aiRivalActive: Boolean = false
+    var aiRivalDistanceM: Float = 0f
+    var aiRivalBaseSpeedMs: Float = 18.5f
+
+    // Event flags for audio/HUD
+    var lastCollisionImpulse: Float = 0f
+        private set
+    var lastTriggeredRadar: SpeedRadarDef? = null
+        private set
+    var trafficViolationWarningAr: String? = null
+    private var violationClearTimerSec: Float = 0f
+
+    private var currentRpm: Float = 800f
+    private var activeGearLabel: String = "D1"
+    private var prevThrottle: Float = 0f
+    private var prevGearNum: Int = 1
+    private var turboBoostPsi: Float = 0f
+    private var exhaustPopIntensity: Float = 0f
+    private var tireScreechIntensity: Float = 0f
+
+    init {
+        resetToRoad(60f)
+    }
+
+    fun selectVehicle(
+        id: VehicleId,
+        custom: VehicleCustomization,
+        savedFuel: Float? = null,
+        savedDamage: DamageState? = null
+    ) {
+        vehicleId = id
+        spec = VehicleFleetCatalog.specOf(id)
+        customization = custom
+        drivetrainMode = spec.defaultDrivetrain
+        autoShifter = AutomaticShifterState.D
+        manualGearIndex = 1
+        fuelLiters = (savedFuel ?: spec.fuelTankLiters).coerceIn(0f, spec.fuelTankLiters)
+        damage = savedDamage ?: DamageState()
+        currentRpm = spec.idleRpm
+    }
+
+    fun updateCustomization(custom: VehicleCustomization) {
+        customization = custom
+    }
+
+    fun resetToRoad(distanceM: Float, laneOffsetM: Float = 2.55f) {
+        distanceAlongRoadM = distanceM.coerceIn(10f, RoadSplineNetwork.TOTAL_ROAD_LENGTH_M - 20f)
+        lateralOffsetM = laneOffsetM
+        forwardSpeedMs = 0f
+        lateralSpeedMs = 0f
+        headingOffsetFromRoadRad = 0f
+        currentSteerInputNorm = 0f
+        currentFrontSteerRad = 0f
+        chassisPitchRad = 0f
+        chassisRollRad = 0f
+        autoShifter = AutomaticShifterState.D
+        manualGearIndex = 1
+        syncWorldPosition()
+    }
+
+    fun configureAiRival(active: Boolean, startDistM: Float = 0f, speedMs: Float = 18.5f) {
+        aiRivalActive = active
+        aiRivalDistanceM = startDistM + 10f
+        aiRivalBaseSpeedMs = speedMs
+    }
+
+    fun refuelTank() {
+        fuelLiters = spec.fuelTankLiters
+        engineRunning = true
+    }
+
+    fun repairAll() {
+        damage = damage.copy(
+            engineHealthPct = 100f,
+            tiresHealthPct = 100f,
+            suspensionHealthPct = 100f,
+            bodyHealthPct = 100f,
+            cargoIntegrityPct = 100f,
+            steeringPullBias = 0f
+        )
+    }
+
+    fun washVehicle() {
+        damage = damage.copy(dirtMudLevel = 0f)
+    }
+
+    fun cycleDrivetrain() {
+        val list = spec.supportedDrivetrains
+        val idx = list.indexOf(drivetrainMode)
+        drivetrainMode = list[(idx + 1) % list.size]
+    }
+
+    fun shiftManualUp() {
+        manualGearIndex = (manualGearIndex + 1).coerceAtMost(spec.forwardGearsCount)
+    }
+
+    fun shiftManualDown() {
+        manualGearIndex = (manualGearIndex - 1).coerceAtLeast(-1)
+    }
+
+    fun step(
+        rawDt: Float,
+        input: ControlInputs,
+        livingWorld: LivingWorldSimulation?
+    ): VehicleTelemetry {
+        val dt = rawDt.coerceIn(0.004f, 0.05f)
+        lastCollisionImpulse = 0f
+        lastTriggeredRadar = null
+
+        if (violationClearTimerSec > 0f) {
+            violationClearTimerSec -= dt
+            if (violationClearTimerSec <= 0f) trafficViolationWarningAr = null
+        }
+
+        val sample = RoadSplineNetwork.sampleAt(distanceAlongRoadM)
+        val surface = sample.surface
+
+        // Upgrade multipliers
+        val engineMult = 1f + (customization.engineUpgradeLevel - 1) * 0.08f
+        val transMult = 1f + (customization.transmissionUpgradeLevel - 1) * 0.05f
+        val suspMult = 1f + (customization.suspensionUpgradeLevel - 1) * 0.08f
+        val brakeMult = 1f + (customization.brakeUpgradeLevel - 1) * 0.09f
+
+        val cargoMassKg = (spec.maxCargoKg * (customization.cargoLoadPct / 100f))
+        val effectiveMassKg = spec.baseMassKg + cargoMassKg
+
+        // Tire + Surface + Weather grip
+        val baseGrip = VehicleFleetCatalog.gripFor(customization.tireType, surface)
+        val weatherGrip = when (weather) {
+            WeatherPreset.HEAVY_RAIN -> 0.78f
+            WeatherPreset.LIGHT_RAIN -> 0.88f
+            WeatherPreset.SANDSTORM -> 0.85f
+            WeatherPreset.MOUNTAIN_FOG -> 0.94f
+            else -> 1.0f
+        }
+        val drivetrainGrip = when (drivetrainMode) {
+            DrivetrainMode.FOUR_L -> 1.24f
+            DrivetrainMode.FOUR_H, DrivetrainMode.AWD -> 1.12f
+            else -> 0.96f
+        } + if (diffLockActive) 0.12f else 0f
+        val realismGrip = when (realismMode) {
+            DrivingRealismMode.ARCADE -> 1.18f
+            DrivingRealismMode.SPORT -> 1.02f
+            DrivingRealismMode.SIMULATION -> 0.92f
+        }
+        val totalGrip = (baseGrip * weatherGrip * drivetrainGrip * realismGrip *
+            (0.65f + 0.35f * (damage.tiresHealthPct / 100f))).coerceIn(0.35f, 1.45f)
+
+        // Effective throttle / cruise control
+        var throttle = input.throttle.coerceIn(0f, 1f)
+        val brake = input.brake.coerceIn(0f, 1f)
+        if (brake > 0.1f || input.handbrake || autoShifter != AutomaticShifterState.D) {
+            cruiseControlEnabled = false
+        }
+        if (cruiseControlEnabled && engineRunning && fuelLiters > 0.01f) {
+            val speedKmh = forwardSpeedMs * 3.6f
+            val err = cruiseTargetKmh - speedKmh
+            throttle = (err * 0.06f).coerceIn(0f, 0.75f)
+        }
+
+        // Smooth speed-sensitive steering response tuned by Eastern/European/Sport wheel profile
+        val speedKmhAbs = abs(forwardSpeedMs * 3.6f)
+        val styleRatio = steeringWheelStyle.steeringRatio
+        val speedSteerDamp = (1f / (1f + speedKmhAbs * (0.012f / styleRatio))).coerceIn(0.32f, 1.05f)
+        val targetSteer = input.steer.coerceIn(-1f, 1f)
+        val steerRate = when (steeringWheelStyle) {
+            SteeringWheelStyle.JAPANESE_SPORT -> 14.5f
+            SteeringWheelStyle.EUROPEAN_LUXURY -> 12.2f
+            SteeringWheelStyle.GULF_YEMENI -> 9.2f
+            SteeringWheelStyle.CLASSIC_HERITAGE -> 7.6f
+        }
+        currentSteerInputNorm += (targetSteer - currentSteerInputNorm) * (dt * steerRate).coerceAtMost(1f)
+        val maxSteerRad = (spec.maxSteerAngleDeg * PI.toFloat() / 180f) * speedSteerDamp * styleRatio.coerceIn(0.88f, 1.16f)
+        currentFrontSteerRad = currentSteerInputNorm * maxSteerRad
+
+        // Drivetrain & gear calculation
+        val gearMultiplier = when (customization.gearPreset) {
+            GearRatioPreset.CRAWLER -> 1.25f
+            GearRatioPreset.BALANCED -> 1.0f
+            GearRatioPreset.HIGHWAY -> 0.86f
+        } * if (drivetrainMode == DrivetrainMode.FOUR_L) 1.65f else 1.0f
+
+        val maxSpeedMs = ((34f + spec.maxPowerHp * 0.055f) * transMult *
+            when (customization.gearPreset) {
+                GearRatioPreset.CRAWLER -> 0.82f
+                GearRatioPreset.BALANCED -> 1.0f
+                GearRatioPreset.HIGHWAY -> 1.14f
+            } * if (drivetrainMode == DrivetrainMode.FOUR_L) 0.48f else 1.0f)
+
+        val currentGearNum: Int
+        val driveDir: Int
+        if (transmissionMode == "auto") {
+            when (autoShifter) {
+                AutomaticShifterState.P -> {
+                    activeGearLabel = "P"
+                    currentGearNum = 0
+                    driveDir = 0
+                }
+                AutomaticShifterState.N -> {
+                    activeGearLabel = "N"
+                    currentGearNum = 0
+                    driveDir = 0
+                }
+                AutomaticShifterState.R -> {
+                    activeGearLabel = "R"
+                    currentGearNum = -1
+                    driveDir = -1
+                }
+                AutomaticShifterState.D -> {
+                    val ratio = (abs(forwardSpeedMs) / maxSpeedMs).coerceIn(0f, 1f)
+                    currentGearNum = (1 + (ratio * (spec.forwardGearsCount - 1)).toInt()).coerceIn(1, spec.forwardGearsCount)
+                    activeGearLabel = if (drivetrainMode == DrivetrainMode.FOUR_L) "L$currentGearNum" else "D$currentGearNum"
+                    driveDir = 1
+                }
+            }
+        } else {
+            currentGearNum = manualGearIndex
+            driveDir = when {
+                manualGearIndex < 0 -> -1
+                manualGearIndex == 0 -> 0
+                else -> 1
+            }
+            activeGearLabel = when {
+                manualGearIndex < 0 -> "R"
+                manualGearIndex == 0 -> "N"
+                else -> "$manualGearIndex"
+            }
+        }
+
+        // Engine Force
+        var driveForceN = 0f
+        val canDeliverPower = engineRunning && fuelLiters > 0.01f && driveDir != 0
+        if (canDeliverPower) {
+            val gearRatioFactor = when {
+                currentGearNum < 0 -> 2.8f
+                currentGearNum == 1 -> 3.4f
+                else -> (3.6f / (0.85f + currentGearNum * 0.55f))
+            }
+            val engineHealthFactor = 0.55f + 0.45f * (damage.engineHealthPct / 100f)
+            val torqueN = (spec.maxEngineTorqueNm * engineMult * gearMultiplier * gearRatioFactor / spec.wheelRadiusM) *
+                throttle * engineHealthFactor * totalGrip
+            driveForceN = torqueN * driveDir
+            // Speed governor
+            if (driveDir > 0 && forwardSpeedMs >= maxSpeedMs) driveForceN = 0f
+            if (driveDir < 0 && forwardSpeedMs <= -14f) driveForceN = 0f
+        }
+
+        // Braking & Park & HDC
+        val maxBrake = spec.maxBrakeForceN * brakeMult * (if (assists.absEnabled) 1.0f else 0.88f)
+        var brakeForceN = brake * maxBrake * totalGrip.coerceAtMost(1.15f)
+        if (input.handbrake || autoShifter == AutomaticShifterState.P) {
+            brakeForceN += maxBrake * 0.85f
+        }
+        // Hill Descent Control
+        if (assists.hdcEnabled && sample.gradePct < -3.5f && forwardSpeedMs > 7.5f && throttle < 0.05f) {
+            brakeForceN += maxBrake * 0.35f
+        }
+
+        // Gravity slope + Aero drag + Surface rolling resistance
+        val slopeSin = (sample.gradePct / 100f).coerceIn(-0.28f, 0.28f)
+        val gravityForceN = -effectiveMassKg * 9.81f * slopeSin
+        val surfaceRollMult = when (surface) {
+            SurfaceType.ASPHALT -> 1.0f
+            SurfaceType.DIRT -> 1.45f
+            SurfaceType.GRAVEL -> 1.55f
+            SurfaceType.ROCK -> 1.65f
+            SurfaceType.SAND -> 2.35f
+            SurfaceType.MUD -> 2.85f
+        }
+        val aeroDragN = 0.5f * 1.225f * spec.dragCoefficient * 2.5f * forwardSpeedMs * abs(forwardSpeedMs)
+        val rollingN = spec.rollingResistance * surfaceRollMult * (if (abs(forwardSpeedMs) > 0.05f) sign(forwardSpeedMs) else 0f)
+        val engineBrakeN = if (throttle < 0.05f && driveDir != 0) forwardSpeedMs * 110f else 0f
+
+        var netForceN = driveForceN + gravityForceN - aeroDragN - rollingN - engineBrakeN
+        val speedSign = if (abs(forwardSpeedMs) > 0.04f) sign(forwardSpeedMs) else 0f
+
+        if (brakeForceN > 0f) {
+            if (abs(forwardSpeedMs) < 0.35f && abs(driveForceN) < brakeForceN) {
+                forwardSpeedMs = 0f
+                netForceN = 0f
+            } else {
+                netForceN -= speedSign * brakeForceN
+            }
+        }
+
+        val prevSpeed = forwardSpeedMs
+        forwardSpeedMs += (netForceN / effectiveMassKg) * dt
+        if (brake > 0.15f && prevSpeed * forwardSpeedMs < 0f && throttle < 0.05f) {
+            forwardSpeedMs = 0f
+        }
+        forwardSpeedMs = forwardSpeedMs.coerceIn(-16f, maxSpeedMs * 1.08f)
+
+        // Kinematic + dynamic bicycle steering relative to road heading
+        val yawRate = SurfaceDynamics.yawRate(forwardSpeedMs, currentFrontSteerRad,
+            spec.wheelbaseM, totalGrip * if (input.handbrake) 0.72f else 1f,
+            realismMode == DrivingRealismMode.ARCADE)
+
+        headingOffsetFromRoadRad += yawRate * dt
+        // Gentle lane-keeping assist when steering is neutral and assist enabled
+        if (steeringAssistEnabled && abs(currentSteerInputNorm) < 0.06f && abs(forwardSpeedMs) > 2f && abs(lateralOffsetM) < sample.widthM * 0.5f && abs(headingOffsetFromRoadRad) < 0.9f) {
+            val alignStrength = if (realismMode == DrivingRealismMode.ARCADE) 3.4f else 1.85f
+            headingOffsetFromRoadRad -= headingOffsetFromRoadRad * (alignStrength * dt).coerceAtMost(0.5f)
+        }
+        headingOffsetFromRoadRad = headingOffsetFromRoadRad.let { angle ->
+            var a = angle
+            while (a > PI.toFloat()) a -= 2f * PI.toFloat()
+            while (a < -PI.toFloat()) a += 2f * PI.toFloat()
+            a
+        }
+
+        // Advance along road & lateral offset
+        val advanceM = forwardSpeedMs * cos(headingOffsetFromRoadRad) * dt
+        val lateralTarget = forwardSpeedMs * sin(headingOffsetFromRoadRad)
+        lateralSpeedMs = SurfaceDynamics.lateralResponse(lateralSpeedMs, lateralTarget,
+            totalGrip * if (input.handbrake) 0.6f else 1f, dt)
+        val lateralDeltaM = lateralSpeedMs * dt
+        val prevDist = distanceAlongRoadM
+        distanceAlongRoadM = (distanceAlongRoadM + advanceM).coerceIn(8f, RoadSplineNetwork.TOTAL_ROAD_LENGTH_M - 15f)
+        lateralOffsetM += lateralDeltaM
+        totalDistanceDrivenM += kotlin.math.sqrt(advanceM * advanceM + lateralDeltaM * lateralDeltaM)
+
+        // Soft road/sidewalk boundary + guardrail collision
+        val maxLat = (sample.widthM * 0.5f) + if (sample.isUrbanStreet) 0.55f else 1.65f
+        val streetPosition = CityStreetNetwork.constrain(distanceAlongRoadM, lateralOffsetM, maxLat)
+        if (streetPosition.hitBoundary) {
+            val impactSpeed = abs(forwardSpeedMs * sin(headingOffsetFromRoadRad)) + abs(forwardSpeedMs) * 0.18f
+            lateralOffsetM = streetPosition.lateralM
+            distanceAlongRoadM = streetPosition.distanceM
+            headingOffsetFromRoadRad *= 0.25f
+            forwardSpeedMs *= 0.72f
+            lateralSpeedMs *= 0.25f
+            if (impactSpeed > 2.2f) {
+                applyCollisionDamage(impactSpeed)
+            }
+        }
+
+        // Gentle central roundabout monument curb deflection so player flows cleanly around the Yemeni fountain plaza
+        for (rb in RoadSplineNetwork.ROUNDABOUTS) {
+            if (abs(distanceAlongRoadM - rb.distanceM) < 4.8f && abs(lateralOffsetM) < 3.8f) {
+                val pushSide = if (lateralOffsetM >= 0f) 1f else -1f
+                lateralOffsetM = pushSide * 4.1f
+                forwardSpeedMs *= 0.88f
+            }
+        }
+
+        // Check collision with AI traffic, red-light rules & smart Speed Radars (ساهر)
+        if (livingWorld != null) {
+            val hitSpeed = livingWorld.checkPlayerTrafficCollision(distanceAlongRoadM, lateralOffsetM, forwardSpeedMs)
+            if (hitSpeed > 0f) {
+                forwardSpeedMs *= 0.22f
+                applyCollisionDamage(hitSpeed)
+            }
+            if (livingWorld.didRunRedLight(prevDist, distanceAlongRoadM, forwardSpeedMs)) {
+                trafficViolationWarningAr = "تنبيه مروري: تجاوزت الإشارة الحمراء! التزم بقواعد السير"
+                violationClearTimerSec = 4.2f
+            }
+            val radarHit = livingWorld.checkSpeedRadarViolation(prevDist, distanceAlongRoadM, abs(forwardSpeedMs * 3.6f))
+            if (radarHit != null) {
+                lastTriggeredRadar = radarHit
+                trafficViolationWarningAr = "فلاش ساهر! تجاوزت سرعة ${radarHit.speedLimitKmh} كم/س عند ${radarHit.nameAr} (−150 ر.ي)"
+                violationClearTimerSec = 5.0f
+            }
+        }
+
+        // Update AI Race Rival if active
+        if (aiRivalActive) {
+            val rivalSpeed = aiRivalBaseSpeedMs * (0.94f + 0.12f * sin(distanceAlongRoadM * 0.01f))
+            aiRivalDistanceM = (aiRivalDistanceM + rivalSpeed * dt).coerceAtMost(RoadSplineNetwork.TOTAL_ROAD_LENGTH_M - 10f)
+        }
+
+        // Wheel spin, realistic drift slip angle & suspension pitch/roll/bounce feel
+        wheelRotationRad = (wheelRotationRad + (forwardSpeedMs / spec.wheelRadiusM) * dt) % (2f * PI.toFloat())
+        val accelMs2 = (forwardSpeedMs - prevSpeed) / dt
+        val cornerLatG = (yawRate * forwardSpeedMs) + (sample.curvatureRadPerM * forwardSpeedMs * forwardSpeedMs * 0.45f)
+        val targetSlip = if (abs(forwardSpeedMs) > 7f && (input.handbrake || abs(cornerLatG) > 5.5f * totalGrip)) {
+            ((cornerLatG / (totalGrip * 7.5f)) * (if (input.handbrake) 22f else 11f)).coerceIn(-28f, 28f)
+        } else 0f
+        driftSlipAngleDeg += (targetSlip - driftSlipAngleDeg) * (dt * 6.5f).coerceAtMost(1f)
+
+        val targetPitch = (-accelMs2 * 0.0095f / suspMult).coerceIn(-0.095f, 0.095f)
+        val targetRoll = (-cornerLatG * 0.0135f / suspMult + sample.bankAngleRad * 0.45f).coerceIn(-0.135f, 0.135f)
+        chassisPitchRad += (targetPitch - chassisPitchRad) * (dt * 7.5f).coerceAtMost(1f)
+        chassisRollRad += (targetRoll - chassisRollRad) * (dt * 7.5f).coerceAtMost(1f)
+
+        val surfaceRoughness = when (surface) {
+            SurfaceType.ASPHALT -> 0.004f
+            SurfaceType.DIRT -> 0.022f
+            SurfaceType.GRAVEL -> 0.028f
+            SurfaceType.SAND -> 0.018f
+            SurfaceType.MUD -> 0.024f
+            SurfaceType.ROCK -> 0.042f
+        }
+        val bumpSpeedFactor = (abs(forwardSpeedMs) / 18f).coerceIn(0f, 1.3f)
+        suspensionBounceM = sin(distanceAlongRoadM * 1.45f) * surfaceRoughness * bumpSpeedFactor / suspMult
+
+        // Auto-sweep wipers in rain or when manually switched on
+        if (wipersOn || weather == WeatherPreset.LIGHT_RAIN || weather == WeatherPreset.HEAVY_RAIN) {
+            val wipeSpeed = if (weather == WeatherPreset.HEAVY_RAIN) 5.8f else 3.6f
+            wiperPhaseRad = (wiperPhaseRad + dt * wipeSpeed) % (2f * PI.toFloat())
+        } else {
+            wiperPhaseRad += (0f - wiperPhaseRad) * (dt * 6f).coerceAtMost(1f)
+        }
+
+        // RPM calculation
+        val gearSpeedSpan = max(5f, maxSpeedMs / spec.forwardGearsCount.toFloat())
+        val speedRatioInGear = if (driveDir == 0) {
+            throttle * 0.68f
+        } else {
+            ((abs(forwardSpeedMs) % gearSpeedSpan) / gearSpeedSpan * 0.78f + throttle * 0.24f).coerceIn(0f, 1.04f)
+        }
+        val targetRpm = if (!engineRunning || fuelLiters <= 0.01f) {
+            0f
+        } else {
+            spec.idleRpm + (spec.redlineRpm - spec.idleRpm) * speedRatioInGear
+        }
+        currentRpm += (targetRpm - currentRpm) * (dt * 9f).coerceAtMost(1f)
+
+        // Turbo Spool Boost, Exhaust Backfire Pops & Asphalt Tire Screech Dynamics
+        val rpmNorm = ((currentRpm - spec.idleRpm) / (spec.redlineRpm - spec.idleRpm).coerceAtLeast(1000f)).coerceIn(0f, 1.1f)
+        val targetBoost = if (engineRunning && throttle > 0.25f) (throttle * rpmNorm * 18f) else 0f
+        turboBoostPsi += (targetBoost - turboBoostPsi) * (dt * if (targetBoost > turboBoostPsi) 5.5f else 9.0f).coerceAtMost(1f)
+
+        val rapidLiftOff = prevThrottle > 0.55f && throttle < 0.14f && rpmNorm > 0.50f
+        val sportDownshift = currentGearNum in 1 until prevGearNum && abs(forwardSpeedMs) > 10f
+        if ((rapidLiftOff || sportDownshift) && engineRunning) {
+            exhaustPopIntensity = 1.0f
+        } else {
+            exhaustPopIntensity = (exhaustPopIntensity - dt * 2.8f).coerceAtLeast(0f)
+        }
+        prevThrottle = throttle
+        prevGearNum = currentGearNum
+
+        val slipScreech = ((abs(driftSlipAngleDeg) - 3.0f) / 14f).coerceIn(0f, 1f)
+        val hardBrakeScreech = if ((brake > 0.72f || input.handbrake) && abs(forwardSpeedMs) > 7f) 0.75f else 0f
+        val surfaceScreechMult = if (surface == SurfaceType.ASPHALT) 1.0f else 0.18f
+        val targetScreech = max(slipScreech, hardBrakeScreech) * surfaceScreechMult
+        tireScreechIntensity += (targetScreech - tireScreechIntensity) * (dt * 10f).coerceAtMost(1f)
+
+        // Fuel burn & mud accumulation
+        if (engineRunning && fuelLiters > 0f) {
+            val burnMult = when (realismMode) {
+                DrivingRealismMode.ARCADE -> 0.45f
+                DrivingRealismMode.SPORT -> 0.75f
+                DrivingRealismMode.SIMULATION -> 1.0f
+            }
+            val burnLPerSec = (spec.baseFuelBurnLPerMin / 60f) * (0.22f + 0.95f * throttle) * burnMult
+            fuelLiters = (fuelLiters - burnLPerSec * dt).coerceAtLeast(0f)
+            if (fuelLiters <= 0.01f) engineRunning = false
+        }
+
+        if (abs(forwardSpeedMs) > 2f && surface in listOf(SurfaceType.MUD, SurfaceType.DIRT, SurfaceType.SAND)) {
+            val mudRate = if (surface == SurfaceType.MUD) 0.018f else 0.006f
+            damage = damage.copy(dirtMudLevel = (damage.dirtMudLevel + mudRate * dt).coerceAtMost(1f))
+        }
+
+        syncWorldPosition()
+
+        // Nearby POI / service station detection
+        var nearServiceType: String? = null
+        var nearServiceName: String? = null
+        var discoveredPoi: String? = null
+        for (poi in RoadSplineNetwork.WORLD_POIS) {
+            val distDelta = abs(poi.distanceM - distanceAlongRoadM)
+            if (distDelta < 45f) {
+                discoveredPoi = poi.id
+                if (poi.type in listOf("fuel", "workshop", "car_wash")) {
+                    nearServiceType = poi.type
+                    nearServiceName = poi.nameAr
+                }
+            }
+        }
+
+        val currentSample = RoadSplineNetwork.sampleAt(distanceAlongRoadM)
+        val regionMeta = RoadSplineNetwork.getRegionAt(distanceAlongRoadM)
+        val altitudeM = regionMeta.baseAltitudeM + (currentSample.y - 60f) * 2.2f
+
+        return VehicleTelemetry(
+            vehicleId = vehicleId,
+            speedKmh = abs(forwardSpeedMs * 3.6f),
+            forwardSpeedMs = forwardSpeedMs,
+            rpm = currentRpm,
+            redlineRpm = spec.redlineRpm,
+            gear = activeGearLabel,
+            autoShifter = autoShifter,
+            transmissionMode = transmissionMode,
+            drivetrainMode = drivetrainMode,
+            diffLockActive = diffLockActive,
+            engineRunning = engineRunning,
+            headlightsOn = headlightsOn,
+            headlightBeamMode = headlightBeamMode,
+            wipersOn = wipersOn || weather == WeatherPreset.LIGHT_RAIN || weather == WeatherPreset.HEAVY_RAIN,
+            wiperPhaseRad = wiperPhaseRad,
+            leftIndicatorOn = leftIndicatorOn,
+            rightIndicatorOn = rightIndicatorOn,
+            cruiseControlEnabled = cruiseControlEnabled,
+            cruiseTargetKmh = cruiseTargetKmh,
+            realismMode = realismMode,
+            throttle = throttle,
+            brake = brake,
+            handbrake = input.handbrake,
+            steeringInputNorm = currentSteerInputNorm,
+            steeringWheelAngleDeg = currentSteerInputNorm * (wheelRotationRangeDeg * 0.5f),
+            driftSlipAngleDeg = driftSlipAngleDeg,
+            suspensionBounceM = suspensionBounceM,
+            roadCurvatureRadPerM = currentSample.curvatureRadPerM,
+            altitudeM = altitudeM,
+            pitchDeg = chassisPitchRad * 180f / PI.toFloat(),
+            rollDeg = chassisRollRad * 180f / PI.toFloat(),
+            headingDeg = ((headingRad * 180f / PI.toFloat()) % 360f + 360f) % 360f,
+            surface = currentSample.surface,
+            regionId = currentSample.regionId,
+            regionNameAr = currentSample.regionNameAr,
+            activeChunkId = currentSample.chunkId,
+            distanceAlongRoadM = distanceAlongRoadM,
+            totalDistanceDrivenM = totalDistanceDrivenM,
+            lateralOffsetM = lateralOffsetM,
+            slopeGradePct = currentSample.gradePct,
+            inTunnel = currentSample.hasTunnel,
+            onBridge = currentSample.hasBridge,
+            fuelLiters = fuelLiters,
+            fuelTankCapacityL = spec.fuelTankLiters,
+            lowFuelWarning = fuelLiters < spec.fuelTankLiters * 0.16f,
+            damage = damage,
+            assists = assists,
+            nearServiceStation = nearServiceType,
+            nearServiceStationNameAr = nearServiceName,
+            discoveredPoiId = discoveredPoi,
+            aiRivalDistanceM = if (aiRivalActive) aiRivalDistanceM else null,
+            playerRaceRank = if (aiRivalActive && aiRivalDistanceM > distanceAlongRoadM) 2 else 1,
+            posX = posX,
+            posY = posY,
+            posZ = posZ,
+            headingRad = headingRad,
+            wheelRotationRad = wheelRotationRad,
+            frontSteerRad = currentFrontSteerRad,
+            activeTrafficCount = livingWorld?.trafficVehicles?.size ?: 0,
+            activePedestriansCount = livingWorld?.pedestrians?.size ?: 0,
+            trafficViolationWarningAr = trafficViolationWarningAr,
+            tireScreechIntensity = tireScreechIntensity,
+            turboBoostPsi = turboBoostPsi,
+            exhaustPopIntensity = exhaustPopIntensity
+        )
+    }
+
+    private fun applyCollisionDamage(impactSpeedMs: Float) {
+        lastCollisionImpulse = impactSpeedMs
+        val dmgScale = when (realismMode) {
+            DrivingRealismMode.ARCADE -> 0.45f
+            DrivingRealismMode.SPORT -> 0.85f
+            DrivingRealismMode.SIMULATION -> 1.35f
+        }
+        val bodyLoss = (impactSpeedMs * 1.4f * dmgScale).coerceIn(1f, 22f)
+        val cargoLoss = (impactSpeedMs * 1.9f * dmgScale).coerceIn(1f, 25f)
+        damage = damage.copy(
+            bodyHealthPct = (damage.bodyHealthPct - bodyLoss).coerceAtLeast(15f),
+            engineHealthPct = (damage.engineHealthPct - bodyLoss * 0.45f).coerceAtLeast(25f),
+            tiresHealthPct = (damage.tiresHealthPct - bodyLoss * 0.3f).coerceAtLeast(30f),
+            cargoIntegrityPct = (damage.cargoIntegrityPct - cargoLoss).coerceAtLeast(0f)
+        )
+    }
+
+    private fun syncWorldPosition() {
+        val sample = RoadSplineNetwork.sampleAt(distanceAlongRoadM)
+        posX = sample.x + sample.rightX * lateralOffsetM
+        posY = sample.y + customization.rideHeightOffsetM
+        posZ = sample.z + sample.rightZ * lateralOffsetM
+        headingRad = sample.headingRad + headingOffsetFromRoadRad
+    }
+
+    fun runEngineeringDiagnostics(): List<EngineeringTestResult> {
+        val results = mutableListOf<EngineeringTestResult>()
+        results.add(EngineeringTestResult("t1", "physics", "فحص كتالوج المركبات", VehicleFleetCatalog.ALL_VEHICLES.size == VehicleId.entries.size, "${VehicleFleetCatalog.ALL_VEHICLES.size} مركبة", "نماذج مركبات إجرائية بمواصفات مختلفة، وليست نسخاً مرخصة من سيارات حقيقية."))
+        results.add(EngineeringTestResult("t2", "world", "فحص المسار التخييلي (22 كم)", RoadSplineNetwork.getAllSamples().size > 4000, "22.0 كم · 9 مناطق", "فحص بيانات المسار المستوحى من اليمن، لا يثبت دقة جغرافية أو اختبار قيادة على الهاتف."))
+        results.add(EngineeringTestResult("t3", "systems", "فحص كتالوج المهام بدون إنترنت", MissionsCatalog.ALL_OFFLINE_MISSIONS.size == 71, "71 مهمة · 5 فصول", "طور القصة والتحديات اليومية تعمل محلياً 100% دون اتصال."))
+        results.add(EngineeringTestResult("t4", "physics", "فحص تماسك الأسطح الـ 6", VehicleFleetCatalog.gripFor(TireCompoundType.MUD_ROCK, SurfaceType.MUD) > VehicleFleetCatalog.gripFor(TireCompoundType.HIGHWAY_SPORT, SurfaceType.MUD), "M/T > H/T في الطين", "فحص ترتيب معاملات التماسك، وليس معايرة بقياسات إطارات حقيقية."))
+        results.add(EngineeringTestResult("t5", "world", "فحص نظام إشارات المرور والذكاء الاصطناعي", RoadSplineNetwork.TRAFFIC_INTERSECTIONS.size == 10, "10 تقاطعات ضوئية", "الإشارات الضوئية متزامنة مع توقف سيارات المرور وعبور المشاة."))
+        results.add(EngineeringTestResult("t6", "android", "محرك الرسوميات OpenGL ES 3.0", true, "Native GLES 3.0", "محرك ثلاثي الأبعاد أصلي بلغة Kotlin بدون WebView."))
+        results.add(EngineeringTestResult("t7", "android", "محرك الصوت وراديو Lo-Fi اليمني", true, "AudioTrack · 5 محطات", "توليد صوتي فوري للمحرك والمقامات اليمنية دون إنترنت."))
+        results.add(EngineeringTestResult("t8", "android", "قاعدة بيانات Room SQLite المحلية", true, "6 جداول منظمة", "حفظ محلي دائم وآمن للملف الشخصي والكراج والمهام والرحلات."))
+        results.add(EngineeringTestResult("t9", "systems", "استوديو التحكم والمقود الذكي", true, "180°–900° + Gyro", "دعم اللمس المتعدد والجيروسكوب وتخصيص مواقع الأدوات."))
+        results.add(EngineeringTestResult("t10", "world", "دورة 24 ساعة و6 حالات طقس", true, "Continuous Sky/Fog", "إضاءة ديناميكية نهارية وليلية مع مصابيح الشوارع والقمريات."))
+        return results
+    }
+}

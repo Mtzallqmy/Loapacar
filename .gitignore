@@ -1,0 +1,17 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Signing material must never enter source archives or commits.
+*.keystore
+*.jks
+*.p12
+*.pfx
+keystore.properties
+.env
+.env.*
