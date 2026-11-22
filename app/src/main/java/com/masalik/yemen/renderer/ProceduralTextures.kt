@@ -20,7 +20,8 @@ import kotlin.random.Random
  * High-Definition Procedural Texture Suite (1024px roads, 512px architectural facades & sport alloy rims)
  * with runtime 8x Anisotropic Filtering for razor-sharp street markings and crisp Yemeni city details.
  */
-class ProceduralTextures {
+class ProceduralTextures(private val assets: android.content.res.AssetManager) {
+    private fun photo(name: String): Bitmap = assets.open("materials/$name.jpg").use { android.graphics.BitmapFactory.decodeStream(it) }
 
     val whiteTex: Int
     val roadAsphaltTex: Int
@@ -49,7 +50,7 @@ class ProceduralTextures {
         roadAsphaltTex = uploadBitmap(createAsphaltRoadBitmap(isBoulevard = false), repeat = true)
         modernBoulevardTex = uploadBitmap(createAsphaltRoadBitmap(isBoulevard = true), repeat = true)
         crosswalkTex = uploadBitmap(createCrosswalkBitmap(), repeat = false)
-        sidewalkStoneTex = uploadBitmap(createSidewalkBitmap(), repeat = true)
+        sidewalkStoneTex = uploadBitmap(photo("cobblestone_floor_001"), repeat = true)
         sanaaFacadeTex = uploadBitmap(createSanaaQamariyaBitmap(), repeat = true)
         taizStoneTex = uploadBitmap(createTaizStoneBitmap(), repeat = true)
         shibamMudTex = uploadBitmap(createShibamMudBitmap(), repeat = true)
@@ -138,16 +139,11 @@ class ProceduralTextures {
         c.drawColor(if (isBoulevard) Color.rgb(40, 44, 51) else Color.rgb(49, 52, 58))
         val p = Paint()
         val rng = Random(if (isBoulevard) 2027 else 142)
-
-        // Fine high-density asphalt mineral aggregate speckle
-        for (i in 0 until 22000) {
-            val shade = (if (isBoulevard) 30 else 36) + rng.nextInt(36)
-            p.color = Color.rgb(shade, shade, shade + 4)
-            val rx = rng.nextFloat() * w
-            val ry = rng.nextFloat() * h
-            val sz = 1.6f + rng.nextFloat() * 2.2f
-            c.drawRect(rx, ry, rx + sz, ry + sz, p)
-        }
+        val asphalt = photo("asphalt_floor")
+        p.alpha = if (isBoulevard) 155 else 190
+        c.drawBitmap(asphalt, null, android.graphics.Rect(0,0,w,h), p)
+        asphalt.recycle()
+        p.alpha = 255
         // Subtle darker rubber tire-wear paths along every lane
         p.color = Color.argb(52, 12, 14, 18)
         if (isBoulevard) {

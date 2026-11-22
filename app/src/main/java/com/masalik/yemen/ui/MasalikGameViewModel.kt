@@ -16,6 +16,7 @@ import com.masalik.yemen.game.EngineeringTestResult
 import com.masalik.yemen.game.GraphicsQuality
 import com.masalik.yemen.game.HudCustomizationSettings
 import com.masalik.yemen.game.LivingWorldSimulation
+import com.masalik.yemen.game.MissionRun
 import com.masalik.yemen.game.MissionDefinition
 import com.masalik.yemen.game.MissionsCatalog
 import com.masalik.yemen.game.NearbyTrafficSignalInfo
@@ -63,6 +64,11 @@ data class MasalikUiState(
     val previewVehicleId: VehicleId = VehicleId.SHAHIQ,
     val activeMission: MissionDefinition? = null,
     val missionTimeRemainingSec: Int = 0,
+    val missionFraction: Float = 0f,
+    val objectiveAr: String = "",
+    val objectiveM: Float = 0f,
+    val objectiveLane: Float = 2.85f,
+    val missionCondition: Float = 100f,
     val missionBannerAr: String? = null,
     val radioOpen: Boolean = false,
     val displayClockStr: String = "09:00",
@@ -83,12 +89,13 @@ data class MasalikUiState(
 class MasalikGameViewModel(application: Application) : AndroidViewModel(application) {
 
     private val database = MasalikDatabase.getInstance(application)
-    private val repository = MasalikRepository(application, database.masalikDao())
+    private val repository = MasalikRepository(application, database)
 
     val physics = VehiclePhysicsEngine()
     val livingWorld = LivingWorldSimulation()
-    val audioEngine = MasalikAudioEngine()
+    val audioEngine = MasalikAudioEngine(application.assets)
     val gyroController = GyroSteeringController(application)
+    private val replayWorld by lazy { LivingWorldSimulation() }
     val replayRecorder = ReplayRecorder()
 
     private val _uiState = MutableStateFlow(MasalikUiState())
@@ -98,6 +105,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     @Volatile var inputSteerNorm: Float = 0f
     @Volatile var inputThrottle: Float = 0f
     @Volatile var inputBrake: Float = 0f
+    @Volatile var inputClutch = 0f
     @Volatile var inputHandbrake: Boolean = false
     @Volatile var showroomOrbitRad: Float = 0.65f
     @Volatile var drivingOrbitYawRad: Float = 0.42f
@@ -105,6 +113,11 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     @Volatile var drivingOrbitIdleSec: Float = 0f
 
     private var worldTimeHours: Float = 9.0f
+    private var run: MissionRun? = null
+    private var fixedRemainder = 0.0
+    private var previousTelemetry = VehicleTelemetry()
+    private var lastTelemetry = VehicleTelemetry()
+    private val pendingSaves = kotlinx.coroutines.channels.Channel<SaveGameSchema>(kotlinx.coroutines.channels.Channel.UNLIMITED)
     private var missionElapsedSec: Float = 0f
     private var uiSyncAccumulator: Float = 0f
     private var autoSaveAccumulator: Float = 0f
@@ -120,6 +133,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     private var tripStartTimeMs: Long = System.currentTimeMillis()
 
     init {
+        viewModelScope.launch { for (snapshot in pendingSaves) repository.persistSaveGame(snapshot) }
         viewModelScope.launch {
             val loaded = repository.loadSaveGame()
             worldTimeHours = loaded.worldTimeHours
@@ -155,7 +169,14 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         physics.wheelRotationRangeDeg = save.hudSettings.smartWheel.rotationRangeDeg
         physics.steeringWheelStyle = save.hudSettings.smartWheel.wheelStyle
         physics.steeringAssistEnabled = save.hudSettings.smartWheel.steeringAssist
-        physics.resetToRoad(save.playerDistanceM)
+        val progress = save.missionRun
+        val mission = MissionsCatalog.ALL_OFFLINE_MISSIONS.firstOrNull { it.id == progress?.id }
+        run = mission?.let { MissionRun(it, progress) }
+        missionElapsedSec = run?.elapsed ?: 0f
+        physics.resetToRoad(save.playerDistanceM, progress?.lateralM ?: 2.85f)
+        physics.configureAiRival(mission?.hasAiRival == true, (progress?.rivalDistance ?: (save.playerDistanceM + 10f)) - 10f,
+            mission?.aiRivalSpeedMs ?: 18f)
+        _uiState.update { it.copy(activeMission = mission) }
 
         audioEngine.mixer = save.audioMixer
         audioEngine.radioSettings = save.radioSettings
@@ -171,10 +192,14 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun onPauseLifecycle() {
+    @Synchronized fun onPauseLifecycle() {
         gyroController.stop()
         audioEngine.stop()
-        saveSnapshotNow()
+        inputThrottle = 0f
+        inputBrake = 0f
+        inputSteerNorm = 0f
+        inputClutch = 0f
+        if (_uiState.value.profileReady) saveSnapshotNow()
     }
 
     override fun onCleared() {
@@ -184,7 +209,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     /** Called every frame on the OpenGL thread (~60fps) to step simulation & build render snapshot. */
-    fun stepSimulationFrame(dt: Float): MasalikGLRenderer.RenderFrameSnapshot {
+    @Synchronized fun stepSimulationFrame(dt: Float): MasalikGLRenderer.RenderFrameSnapshot {
         val state = _uiState.value
         val modal = state.activeModal
         val isDriving = modal == ActiveModal.DRIVING
@@ -226,9 +251,10 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
                 if (replayRecorder.cameraAngle == ReplayCameraAngle.DRONE_ORBIT) {
                     showroomOrbitRad = (showroomOrbitRad + dt * 0.36f * replayRecorder.playbackSpeed) % (2f * kotlin.math.PI.toFloat())
                 }
-                livingWorld.update(dt * replayRecorder.playbackSpeed, rTelemetry.distanceAlongRoadM, rTelemetry.lateralOffsetM, rTelemetry.speedKmh / 3.6f, rAtmo.nightFactor)
+
             }
 
+            replayFrame?.world?.let { replayWorld.showRecorded(it) }
             // Soft cinematic audio during replay
             audioEngine.drivingActive = replayRecorder.isPlaying
             audioEngine.engineRunning = rTelemetry.engineRunning
@@ -281,8 +307,11 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
                 photoFovDeg = _uiState.value.photoFovDeg,
                 worldTimeHours = rTimeHours,
                 weather = rWeather,
-                livingWorld = livingWorld,
-                finishDistanceM = _uiState.value.activeMission?.finishDistanceM,
+                livingWorld = replayWorld,
+                finishDistanceM = run?.target?.distance,
+                objectiveLane = run?.target?.lane ?: 2.85f,
+                isStop = run?.target?.isStop ?: false,
+                controls = currentSave.hudSettings,
                 blinkerOn = rBlinker,
                 wheelStyle = currentSave.hudSettings.smartWheel.wheelStyle,
                 seatSide = currentSave.hudSettings.smartWheel.seatSide,
@@ -318,28 +347,39 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
                 throttle = inputThrottle,
                 brake = inputBrake,
                 steer = effectiveSteer,
-                handbrake = inputHandbrake
+                clutch = inputClutch, handbrake = inputHandbrake
             )
-            livingWorld.update(dt, physics.distanceAlongRoadM, physics.lateralOffsetM, physics.forwardSpeedMs, atmo.nightFactor, physics.weather)
-            telemetry = physics.step(dt, inputs, livingWorld)
+            fixedRemainder = (fixedRemainder + dt).coerceAtMost(0.12)
+            val tick = 1.0 / 60.0
+            var collision = 0f
+            var radar: com.masalik.yemen.game.SpeedRadarDef? = null
+            while (fixedRemainder + 1e-9 >= tick) {
+                livingWorld.update(tick.toFloat(), physics.distanceAlongRoadM, physics.lateralOffsetM, physics.forwardSpeedMs, atmo.nightFactor, physics.weather)
+                previousTelemetry = lastTelemetry
+                lastTelemetry = physics.step(tick.toFloat(), inputs, livingWorld)
+                val journey = run
+                val oldStage = journey?.stage
+                journey?.advance(tick.toFloat(), lastTelemetry, physics.headingOffsetFromRoadRad, physics.lastCollisionImpulse)
+                if (journey != null && journey.stage != oldStage && !journey.finished) {
+                    if (journey.mission.id == "story_2" && journey.stage == 2) setWeather(WeatherPreset.LIGHT_RAIN)
+                    saveSnapshotNow()
+                }
+                replayRecorder.recordStep(tick.toFloat()) {
+                    ReplayFrame(lastTelemetry,worldTimeHours,physics.weather,blinkerPhase,
+                        livingWorld.captureNearby(physics.distanceAlongRoadM))
+                }
+                collision = maxOf(collision, physics.lastCollisionImpulse)
+                radar = physics.lastTriggeredRadar ?: radar
+                fixedRemainder -= tick
+            }
+            telemetry = lastTelemetry
 
-            // Record into 20s rolling instant replay buffer
-            replayRecorder.recordStep(
-                dt,
-                ReplayFrame(
-                    telemetry = telemetry,
-                    worldTimeHours = worldTimeHours,
-                    weather = state.saveState.weather,
-                    blinkerOn = blinkerPhase
-                )
-            )
-
-            if (physics.lastCollisionImpulse > 2.0f) {
-                audioEngine.triggerCollision((physics.lastCollisionImpulse / 14f).coerceIn(0.25f, 1f))
+            if (collision > 2.0f) {
+                audioEngine.triggerCollision((collision / 14f).coerceIn(0.25f, 1f))
             }
 
             // Speed Radar (رادار ساهر) Violation Detection -> Camera Flash + Shutter + Fine (-150 ر.ي)
-            val radarHit = physics.lastTriggeredRadar
+            val radarHit = radar
             if (radarHit != null) {
                 radarFlashAlpha = 1.0f
                 audioEngine.triggerCameraShutter()
@@ -360,10 +400,14 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             // Mission progress evaluation
             val mission = state.activeMission
             if (mission != null) {
-                missionElapsedSec += dt
-                val reachedFinish = telemetry.distanceAlongRoadM >= mission.finishDistanceM - 15f
-                if (reachedFinish) {
-                    completeActiveMission(mission, missionElapsedSec)
+                val active = run
+                missionElapsedSec = active?.elapsed ?: 0f
+                if (active?.finished == true) completeActiveMission(mission, missionElapsedSec)
+                else if (active?.failure != null) {
+                    run = null
+                    physics.configureAiRival(false)
+                    _uiState.update { it.copy(activeMission = null, missionBannerAr = active.failure) }
+                    saveSnapshotNow()
                 }
             }
 
@@ -374,11 +418,13 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
                 saveSnapshotNow()
             }
         } else {
-            livingWorld.update(dt * 0.45f, physics.distanceAlongRoadM, physics.lateralOffsetM, 0f, atmo.nightFactor)
-            telemetry = physics.step(0.004f, ControlInputs(handbrake = true), null)
+            fixedRemainder = 0.0
+            telemetry = lastTelemetry
         }
 
         // Update live cinematic audio synthesizer parameters
+        physics.assistedClutch = physics.realismMode != DrivingRealismMode.SIMULATION
+        audioEngine.insideCabin = state.cameraMode == CameraMode.COCKPIT
         audioEngine.drivingActive = isDriving
         audioEngine.engineRunning = telemetry.engineRunning
         audioEngine.vehicleId = physics.vehicleId
@@ -409,6 +455,11 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
                     displayClockStr = LivingWorldSimulation.formatWorldTime(worldTimeHours),
                     activeTimePhase = LivingWorldSimulation.hoursToPreset(worldTimeHours),
                     missionTimeRemainingSec = remSec,
+                    objectiveAr = run?.target?.let { it.label + if (it.isStop) " · جلنط لثانيتين" else "" } ?: "",
+                    missionFraction = run?.let { it.stage.toFloat()/it.objectives.size } ?: 0f,
+                    objectiveM = run?.target?.distance ?: 0f,
+                    objectiveLane = run?.target?.lane ?: 2.85f,
+                    missionCondition = run?.condition ?: 100f,
                     fps = currentFps
                 )
             }
@@ -421,10 +472,21 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         val previewCustom = currentSave.customizations[previewId]
             ?: VehicleFleetCatalog.defaultCustomizations().getValue(previewId)
 
+        val alpha = (fixedRemainder * 60).toFloat().coerceIn(0f,1f)
+        val prev = previousTelemetry
+        val visual = if (isDriving && prev.vehicleId == telemetry.vehicleId &&
+            kotlin.math.abs(prev.distanceAlongRoadM - telemetry.distanceAlongRoadM) < 4f) {
+            fun blend(a: Float, b: Float) = a + (b-a)*alpha
+            val angle = telemetry.headingRad - prev.headingRad
+            telemetry.copy(posX = blend(prev.posX,telemetry.posX), posY = blend(prev.posY,telemetry.posY),
+                posZ = blend(prev.posZ,telemetry.posZ), pitchDeg = blend(prev.pitchDeg,telemetry.pitchDeg),
+                rollDeg = blend(prev.rollDeg,telemetry.rollDeg),
+                headingRad = prev.headingRad + alpha * kotlin.math.atan2(kotlin.math.sin(angle), kotlin.math.cos(angle)))
+        } else telemetry
         return MasalikGLRenderer.RenderFrameSnapshot(
                 graphicsQuality = state.saveState.graphicsQuality,
                 targetFps = state.saveState.hudSettings.targetFps,
-            telemetry = telemetry,
+            telemetry = visual,
             customization = activeCustom,
             previewVehicleId = previewId,
             previewCustomization = previewCustom,
@@ -435,7 +497,10 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             worldTimeHours = worldTimeHours,
             weather = currentSave.weather,
             livingWorld = livingWorld,
-            finishDistanceM = _uiState.value.activeMission?.finishDistanceM,
+            finishDistanceM = run?.target?.distance,
+                objectiveLane = run?.target?.lane ?: 2.85f,
+                isStop = run?.target?.isStop ?: false,
+                controls = currentSave.hudSettings,
             blinkerOn = blinkerPhase,
             wheelStyle = currentSave.hudSettings.smartWheel.wheelStyle,
             seatSide = currentSave.hudSettings.smartWheel.seatSide,
@@ -448,6 +513,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun completeActiveMission(mission: MissionDefinition, elapsedSec: Float) {
+        run = null
         missionElapsedSec = 0f
         physics.configureAiRival(false)
         val current = _uiState.value.saveState
@@ -458,6 +524,8 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         val prevCount = current.missionCompletions[mission.id] ?: 0
 
         val updatedSave = current.copy(
+            missionRun = null,
+            playerDistanceM = physics.distanceAlongRoadM,
             masalikCoins = nextCoins,
             driverXp = nextXp,
             missionBestTimesSec = current.missionBestTimesSec + (mission.id to newBest),
@@ -472,10 +540,17 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    @Synchronized fun cancelMission() {
+        run = null
+        physics.configureAiRival(false)
+        _uiState.update { it.copy(activeMission = null, missionBannerAr = null) }
+        saveSnapshotNow()
+    }
+
     fun dismissMissionBanner() = _uiState.update { it.copy(missionBannerAr = null) }
     fun dismissToast() = _uiState.update { it.copy(toastMessageAr = null) }
 
-    fun setModal(modal: ActiveModal) {
+    @Synchronized fun setModal(modal: ActiveModal) {
         if (modal == ActiveModal.DRIVING && _uiState.value.activeModal != ActiveModal.DRIVING) {
             tripStartDistM = physics.totalDistanceDrivenM
             tripMaxSpeedKmh = 0f
@@ -517,7 +592,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun startMission(mission: MissionDefinition) {
+    @Synchronized fun startMission(mission: MissionDefinition) {
         val current = _uiState.value.saveState
         val chosenVehicle = if (mission.recommendedVehicleId in current.unlockedVehicles) {
             mission.recommendedVehicleId
@@ -526,6 +601,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         val custom = current.customizations[chosenVehicle]
             ?: VehicleFleetCatalog.defaultCustomizations().getValue(chosenVehicle)
         physics.selectVehicle(chosenVehicle, custom, current.fuelByVehicle[chosenVehicle], current.damageByVehicle[chosenVehicle])
+        run = MissionRun(mission)
         physics.weather = mission.weatherPreset
         physics.resetToRoad(mission.startDistanceM)
         physics.configureAiRival(mission.hasAiRival, mission.startDistanceM, mission.aiRivalSpeedMs)
@@ -537,6 +613,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             weather = mission.weatherPreset,
             timeOfDay = mission.timeOfDayPreset,
             worldTimeHours = worldTimeHours,
+            missionRun = run?.snapshot(2.85f, physics.aiRivalDistanceM),
             playerDistanceM = mission.startDistanceM
         )
         commitSave(nextSave)
@@ -551,11 +628,16 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun startFreeRoam() {
+        if (run != null) { setModal(ActiveModal.DRIVING); return }
         physics.configureAiRival(false)
         _uiState.update { it.copy(activeMission = null, activeModal = ActiveModal.DRIVING) }
     }
 
-    fun fastTravelToCity(city: YemenCityHub) {
+    @Synchronized fun fastTravelToCity(city: YemenCityHub) {
+        if (run != null) {
+            _uiState.update { it.copy(toastMessageAr = "أكمل المهمة أو ألغها قبل الانتقال السريع") }
+            return
+        }
         physics.resetToRoad(city.distanceM)
         physics.weather = city.defaultWeather
         worldTimeHours = city.defaultTimeOfDay.hours
@@ -594,7 +676,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update { it.copy(previewVehicleId = id, toastMessageAr = "تم تجهيز مركبة «${VehicleFleetCatalog.specOf(id).nameAr}»") }
     }
 
-    fun unlockVehicle(id: VehicleId) {
+    @Synchronized fun unlockVehicle(id: VehicleId) {
         val spec = VehicleFleetCatalog.specOf(id)
         val current = _uiState.value.saveState
         if (id in current.unlockedVehicles || current.masalikCoins < spec.unlockPriceCoins) return
@@ -616,7 +698,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         commitSave(updated)
     }
 
-    fun upgradeMechanicalPart(id: VehicleId, part: String, cost: Int) {
+    @Synchronized fun upgradeMechanicalPart(id: VehicleId, part: String, cost: Int) {
         val current = _uiState.value.saveState
         if (current.masalikCoins < cost) return
         val old = current.customizations[id] ?: VehicleFleetCatalog.defaultCustomizations().getValue(id)
@@ -635,7 +717,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         commitSave(updated)
     }
 
-    fun serviceAction(type: String, targetVehicleId: VehicleId = physics.vehicleId, cost: Int = 0) {
+    @Synchronized fun serviceAction(type: String, targetVehicleId: VehicleId = physics.vehicleId, cost: Int = 0) {
         val current = _uiState.value.saveState
         if (cost > 0 && current.masalikCoins < cost) {
             _uiState.update { it.copy(toastMessageAr = "الرصيد غير كافٍ لهذه الخدمة") }
@@ -728,7 +810,10 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     fun manualGearUp() = physics.shiftManualUp()
     fun manualGearDown() = physics.shiftManualDown()
     fun cycleDrivetrain() = physics.cycleDrivetrain()
-    fun toggleDiffLock() { physics.diffLockActive = !physics.diffLockActive }
+    fun toggleDiffLock() {
+        if (physics.drivetrainMode == com.masalik.yemen.game.DrivetrainMode.FOUR_H ||
+            physics.drivetrainMode == com.masalik.yemen.game.DrivetrainMode.FOUR_L) physics.diffLockActive = !physics.diffLockActive
+    }
     fun toggleEngine() { physics.engineRunning = !physics.engineRunning }
     fun toggleHeadlights() {
         val modes = com.masalik.yemen.game.HeadlightBeamMode.entries
@@ -819,7 +904,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             telemetry = cur.telemetry,
             worldTimeHours = worldTimeHours,
             weather = cur.saveState.weather,
-            blinkerOn = blinkerPhase
+            blinkerOn = blinkerPhase, world = livingWorld.captureNearby(physics.distanceAlongRoadM)
         )
         replayRecorder.enterReplaySession(fallback)
         inputThrottle = 0f
@@ -998,6 +1083,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     private fun saveSnapshotNow() {
         val cur = _uiState.value.saveState
         val updated = cur.copy(
+            missionRun = run?.snapshot(physics.lateralOffsetM, physics.aiRivalDistanceM),
             worldTimeHours = worldTimeHours,
             timeOfDay = LivingWorldSimulation.hoursToPreset(worldTimeHours),
             playerDistanceM = physics.distanceAlongRoadM,
@@ -1012,8 +1098,6 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
 
     private fun commitSave(next: SaveGameSchema) {
         _uiState.update { it.copy(saveState = next) }
-        viewModelScope.launch {
-            repository.persistSaveGame(next)
-        }
+        pendingSaves.trySend(next)
     }
 }

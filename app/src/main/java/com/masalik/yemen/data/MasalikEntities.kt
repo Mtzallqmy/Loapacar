@@ -21,6 +21,7 @@ data class PlayerProfileEntity(
     val visitedCitiesJson: String = "[\"city_taiz_sabir\"]",
     val discoveredPoisJson: String = "[]",
     val totalCareerDistanceM: Float = 0f,
+    val missionRunJson: String? = null,
     val timestampIso: String = ""
 )
 

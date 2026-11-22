@@ -176,6 +176,18 @@ fun ControlStudioScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Text("مقعد السائق · الارتفاع", color = MasalikIvory)
+            Slider(value = hudSettings.seatHeightM, valueRange = -.16f.. .16f,
+                onValueChange = { onUpdateHud(hudSettings.copy(seatHeightM = it)) })
+            Text("المسافة من المقود", color = MasalikIvory)
+            Slider(value = hudSettings.seatDepthM, valueRange = -.24f.. .14f,
+                onValueChange = { onUpdateHud(hudSettings.copy(seatDepthM = it)) })
+            Text("زاوية رؤية السائق", color = MasalikIvory)
+            Slider(value = hudSettings.cockpitFov, valueRange = 52f..82f,
+                onValueChange = { onUpdateHud(hudSettings.copy(cockpitFov = it)) })
+            Text("حركة الكاميرا", color = MasalikIvory)
+            Slider(value = hudSettings.cameraMotion, valueRange = 0f..1f,
+                onValueChange = { onUpdateHud(hudSettings.copy(cameraMotion = it)) })
             Text("أداء العرض: ${hudSettings.targetFps} إطار/ث", color = MasalikAmber, fontSize = 13.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 listOf(30, 45, 60).forEach { cap ->

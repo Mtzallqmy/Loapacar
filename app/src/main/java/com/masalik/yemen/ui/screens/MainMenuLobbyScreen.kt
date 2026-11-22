@@ -210,14 +210,14 @@ fun MainMenuLobbyScreen(
             verticalArrangement = Arrangement.Top
         ) {
             Text(
-                "MASALIK · 3D YEMEN DRIVING SIM",
+                "MY CAR · YEMEN",
                 color = MasalikAmber,
                 fontFamily = JetBrainsMonoFontFamily,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                "مَسَالِك",
+                "سيارتي — My Car",
                 fontSize = 34.sp,
                 lineHeight = 40.sp,
                 fontWeight = FontWeight.Bold,
@@ -350,7 +350,7 @@ fun MainMenuLobbyScreen(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text("برمجة وتطوير معتز العلقمي – تعز – اليمن – 2026م", color = MasalikMuted, fontSize = 10.sp)
-            Text("مَسَالِك · OPENGLES 3.0 PBR · ROOM SQLITE", color = MasalikMuted, fontFamily = JetBrainsMonoFontFamily, fontSize = 10.sp)
+            Text("سيارتي · رحلة في اليمن", color = MasalikMuted, fontFamily = JetBrainsMonoFontFamily, fontSize = 10.sp)
         }
     }
 }

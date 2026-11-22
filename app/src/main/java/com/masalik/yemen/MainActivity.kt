@@ -230,7 +230,7 @@ private fun MasalikRootScreen(
                 GLSurfaceView(ctx).apply {
                     setEGLContextClientVersion(3)
                     preserveEGLContextOnPause = true
-                    setRenderer(MasalikGLRenderer(onFirstFrame = { Handler(Looper.getMainLooper()).post { worldReady = true } }) { dtSec -> vm.stepSimulationFrame(dtSec) })
+                    setRenderer(MasalikGLRenderer(ctx.assets, onFirstFrame = { Handler(Looper.getMainLooper()).post { worldReady = true } }) { dtSec -> vm.stepSimulationFrame(dtSec) })
                     renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
                     onBindGLView(this)
                 }

@@ -13,8 +13,8 @@ android {
         applicationId = "com.masalik.yemen"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "3.0.0"
+        versionCode = 6
+        versionName = "3.1.0"
     }
 
     signingConfigs {
@@ -25,10 +25,10 @@ android {
             keyPassword = System.getenv("MASALIK_KEY_PASSWORD") ?: System.getenv("MASALIK_STORE_PASSWORD") ?: "android"
         }
         create("release") {
-            storeFile = file(System.getenv("MASALIK_KEYSTORE") ?: "${rootDir}/debug.keystore")
-            storePassword = System.getenv("MASALIK_STORE_PASSWORD") ?: "android"
-            keyAlias = System.getenv("MASALIK_KEY_ALIAS") ?: "androiddebugkey"
-            keyPassword = System.getenv("MASALIK_KEY_PASSWORD") ?: System.getenv("MASALIK_STORE_PASSWORD") ?: "android"
+            storeFile = System.getenv("MASALIK_RELEASE_KEYSTORE")?.let { file(it) }
+            storePassword = System.getenv("MASALIK_RELEASE_STORE_PASSWORD")
+            keyAlias = System.getenv("MASALIK_RELEASE_KEY_ALIAS")
+            keyPassword = System.getenv("MASALIK_RELEASE_KEY_PASSWORD") ?: storePassword
         }
     }
 
@@ -41,7 +41,15 @@ android {
                 "proguard-rules.pro"
             )
         }
+        create("preview") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".preview"
+            versionNameSuffix = "-preview"
+            signingConfig = signingConfigs.getByName("debugConfig")
+        }
         debug {
+            applicationIdSuffix = ".preview"
+            versionNameSuffix = "-preview"
             signingConfig = signingConfigs.getByName("debugConfig")
         }
     }
@@ -56,6 +64,8 @@ android {
         buildConfig = true
     }
 }
+
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
 dependencies {
     testImplementation("junit:junit:4.13.2")

@@ -12,6 +12,7 @@ data class ControlInputs(
     val throttle: Float = 0f,
     val brake: Float = 0f,
     val steer: Float = 0f, // -1 (left) .. +1 (right)
+    val clutch: Float = 0f,
     val handbrake: Boolean = false
 )
 
@@ -72,6 +73,10 @@ class VehiclePhysicsEngine {
         private set
 
     // Drivetrain & systems
+    val suspension = WheelSuspension()
+    var assistedClutch = true
+    private var previousEngagement = 0f
+    private var roadWetness = 0f
     var transmissionMode: String = "auto"
     var autoShifter: AutomaticShifterState = AutomaticShifterState.D
     var manualGearIndex: Int = 1
@@ -128,6 +133,7 @@ class VehiclePhysicsEngine {
         vehicleId = id
         spec = VehicleFleetCatalog.specOf(id)
         customization = custom
+        diffLockActive = false
         drivetrainMode = spec.defaultDrivetrain
         autoShifter = AutomaticShifterState.D
         manualGearIndex = 1
@@ -143,6 +149,8 @@ class VehiclePhysicsEngine {
     fun resetToRoad(distanceM: Float, laneOffsetM: Float = 2.55f) {
         distanceAlongRoadM = distanceM.coerceIn(10f, RoadSplineNetwork.TOTAL_ROAD_LENGTH_M - 20f)
         lateralOffsetM = laneOffsetM
+        suspension.reset()
+        previousEngagement = 0f
         forwardSpeedMs = 0f
         lateralSpeedMs = 0f
         headingOffsetFromRoadRad = 0f
@@ -185,6 +193,7 @@ class VehiclePhysicsEngine {
         val list = spec.supportedDrivetrains
         val idx = list.indexOf(drivetrainMode)
         drivetrainMode = list[(idx + 1) % list.size]
+        if (drivetrainMode == DrivetrainMode.TWO_WD || drivetrainMode == DrivetrainMode.AWD) diffLockActive = false
     }
 
     fun shiftManualUp() {
@@ -222,7 +231,18 @@ class VehiclePhysicsEngine {
         val effectiveMassKg = spec.baseMassKg + cargoMassKg
 
         // Tire + Surface + Weather grip
-        val baseGrip = VehicleFleetCatalog.gripFor(customization.tireType, surface)
+        val shoulders = if (surface == SurfaceType.ASPHALT && !sample.isUrbanStreet) {
+            val track = spec.trackWidthM * .5f
+            listOf(lateralOffsetM - track, lateralOffsetM + track).count { abs(it) > sample.widthM * .5f }
+        } else 0
+        val baseGrip = (VehicleFleetCatalog.gripFor(customization.tireType, surface) * (2 - shoulders) +
+            VehicleFleetCatalog.gripFor(customization.tireType, SurfaceType.GRAVEL) * shoulders) / 2f
+        val wetTarget = when (weather) {
+            WeatherPreset.HEAVY_RAIN -> 1f
+            WeatherPreset.LIGHT_RAIN -> .6f
+            else -> 0f
+        }
+        roadWetness += (wetTarget - roadWetness) * dt / (if (wetTarget > roadWetness) 8f else 70f)
         val weatherGrip = when (weather) {
             WeatherPreset.HEAVY_RAIN -> 0.78f
             WeatherPreset.LIGHT_RAIN -> 0.88f
@@ -240,7 +260,7 @@ class VehiclePhysicsEngine {
             DrivingRealismMode.SPORT -> 1.02f
             DrivingRealismMode.SIMULATION -> 0.92f
         }
-        val totalGrip = (baseGrip * weatherGrip * drivetrainGrip * realismGrip *
+        val totalGrip = (baseGrip * (1f - .12f * roadWetness) * weatherGrip * drivetrainGrip * realismGrip *
             (0.65f + 0.35f * (damage.tiresHealthPct / 100f))).coerceIn(0.35f, 1.45f)
 
         // Effective throttle / cruise control
@@ -268,7 +288,7 @@ class VehiclePhysicsEngine {
         }
         currentSteerInputNorm += (targetSteer - currentSteerInputNorm) * (dt * steerRate).coerceAtMost(1f)
         val maxSteerRad = (spec.maxSteerAngleDeg * PI.toFloat() / 180f) * speedSteerDamp * styleRatio.coerceIn(0.88f, 1.16f)
-        currentFrontSteerRad = currentSteerInputNorm * maxSteerRad
+        currentFrontSteerRad = currentSteerInputNorm * maxSteerRad * if (diffLockActive) .90f else 1f
 
         // Drivetrain & gear calculation
         val gearMultiplier = when (customization.gearPreset) {
@@ -324,19 +344,31 @@ class VehiclePhysicsEngine {
             }
         }
 
+        val ratio = when {
+            currentGearNum < 0 -> 3.15f
+            currentGearNum == 0 -> 0f
+            else -> (3.7f * Math.pow(.75, (currentGearNum - 1).toDouble())).toFloat()
+        } * gearMultiplier
+        val wheelRpm = abs(forwardSpeedMs) * 60f / (2f * PI.toFloat() * spec.wheelRadiusM)
+        val shaftRpm = wheelRpm * ratio * 4.1f
+        val manual = transmissionMode == "manual"
+        val pedalCoupling = ((.91f - input.clutch) / .67f).coerceIn(0f,1f)
+        val coupling = if (currentGearNum == 0) 0f else if (manual) pedalCoupling else 1f
+        if (manual && !assistedClutch && engineRunning && shaftRpm < spec.idleRpm * .45f &&
+            coupling > .90f && previousEngagement < .90f && throttle < .18f) engineRunning = false
+        previousEngagement = coupling
         // Engine Force
         var driveForceN = 0f
         val canDeliverPower = engineRunning && fuelLiters > 0.01f && driveDir != 0
         if (canDeliverPower) {
-            val gearRatioFactor = when {
-                currentGearNum < 0 -> 2.8f
-                currentGearNum == 1 -> 3.4f
-                else -> (3.6f / (0.85f + currentGearNum * 0.55f))
-            }
             val engineHealthFactor = 0.55f + 0.45f * (damage.engineHealthPct / 100f)
-            val torqueN = (spec.maxEngineTorqueNm * engineMult * gearMultiplier * gearRatioFactor / spec.wheelRadiusM) *
-                throttle * engineHealthFactor * totalGrip
-            driveForceN = torqueN * driveDir
+            val curve = (.71f + .29f * sin((currentRpm / spec.redlineRpm).coerceIn(0f,1f) * PI.toFloat()))
+            val torqueN = spec.maxEngineTorqueNm * curve * engineMult * ratio * 4.1f * .86f /
+                spec.wheelRadiusM * throttle * engineHealthFactor * coupling
+            val drivenLoad = if (drivetrainMode == DrivetrainMode.FOUR_L || drivetrainMode == DrivetrainMode.FOUR_H ||
+                drivetrainMode == DrivetrainMode.AWD) .92f else .58f
+            val tractionLimit = effectiveMassKg * 9.81f * totalGrip * drivenLoad
+            driveForceN = minOf(torqueN, tractionLimit) * driveDir
             // Speed governor
             if (driveDir > 0 && forwardSpeedMs >= maxSpeedMs) driveForceN = 0f
             if (driveDir < 0 && forwardSpeedMs <= -14f) driveForceN = 0f
@@ -345,7 +377,7 @@ class VehiclePhysicsEngine {
         // Braking & Park & HDC
         val maxBrake = spec.maxBrakeForceN * brakeMult * (if (assists.absEnabled) 1.0f else 0.88f)
         var brakeForceN = brake * maxBrake * totalGrip.coerceAtMost(1.15f)
-        if (input.handbrake || autoShifter == AutomaticShifterState.P) {
+        if (input.handbrake || (!manual && autoShifter == AutomaticShifterState.P)) {
             brakeForceN += maxBrake * 0.85f
         }
         // Hill Descent Control
@@ -366,7 +398,7 @@ class VehiclePhysicsEngine {
         }
         val aeroDragN = 0.5f * 1.225f * spec.dragCoefficient * 2.5f * forwardSpeedMs * abs(forwardSpeedMs)
         val rollingN = spec.rollingResistance * surfaceRollMult * (if (abs(forwardSpeedMs) > 0.05f) sign(forwardSpeedMs) else 0f)
-        val engineBrakeN = if (throttle < 0.05f && driveDir != 0) forwardSpeedMs * 110f else 0f
+        val engineBrakeN = if (throttle < 0.05f && driveDir != 0) forwardSpeedMs * 110f * coupling else 0f
 
         var netForceN = driveForceN + gravityForceN - aeroDragN - rollingN - engineBrakeN
         val speedSign = if (abs(forwardSpeedMs) > 0.04f) sign(forwardSpeedMs) else 0f
@@ -392,7 +424,7 @@ class VehiclePhysicsEngine {
             spec.wheelbaseM, totalGrip * if (input.handbrake) 0.72f else 1f,
             realismMode == DrivingRealismMode.ARCADE)
 
-        headingOffsetFromRoadRad += yawRate * dt
+        headingOffsetFromRoadRad = headingRad - sample.headingRad + yawRate * dt
         // Gentle lane-keeping assist when steering is neutral and assist enabled
         if (steeringAssistEnabled && abs(currentSteerInputNorm) < 0.06f && abs(forwardSpeedMs) > 2f && abs(lateralOffsetM) < sample.widthM * 0.5f && abs(headingOffsetFromRoadRad) < 0.9f) {
             val alignStrength = if (realismMode == DrivingRealismMode.ARCADE) 3.4f else 1.85f
@@ -406,15 +438,28 @@ class VehiclePhysicsEngine {
         }
 
         // Advance along road & lateral offset
-        val advanceM = forwardSpeedMs * cos(headingOffsetFromRoadRad) * dt
+        val worldAngle = sample.headingRad + headingOffsetFromRoadRad
+        val localForward = forwardSpeedMs * cos(headingOffsetFromRoadRad)
         val lateralTarget = forwardSpeedMs * sin(headingOffsetFromRoadRad)
-        lateralSpeedMs = SurfaceDynamics.lateralResponse(lateralSpeedMs, lateralTarget,
-            totalGrip * if (input.handbrake) 0.6f else 1f, dt)
-        val lateralDeltaM = lateralSpeedMs * dt
+        lateralSpeedMs = SurfaceDynamics.lateralResponse(lateralSpeedMs,lateralTarget,totalGrip,dt)
+        val dx = (sin(sample.headingRad)*localForward + sample.rightX*lateralSpeedMs) * dt
+        val dz = (cos(sample.headingRad)*localForward + sample.rightZ*lateralSpeedMs) * dt
         val prevDist = distanceAlongRoadM
-        distanceAlongRoadM = (distanceAlongRoadM + advanceM).coerceIn(8f, RoadSplineNetwork.TOTAL_ROAD_LENGTH_M - 15f)
-        lateralOffsetM += lateralDeltaM
-        totalDistanceDrivenM += kotlin.math.sqrt(advanceM * advanceM + lateralDeltaM * lateralDeltaM)
+        posX += dx
+        posZ += dz
+        // Project against the nearby centerline only. Overlapping segments at different
+        // elevations keep their identity because the search starts on the current deck.
+        var navigationD = prevDist
+        repeat(2) {
+            val s = RoadSplineNetwork.sampleAt(navigationD)
+            val parallel = (posX-s.x)*sin(s.headingRad)+(posZ-s.z)*cos(s.headingRad)
+            navigationD = (navigationD + parallel).coerceIn(8f,RoadSplineNetwork.TOTAL_ROAD_LENGTH_M-15f)
+        }
+        val nearbyRoad = RoadSplineNetwork.sampleAt(navigationD)
+        distanceAlongRoadM = navigationD
+        lateralOffsetM = (posX-nearbyRoad.x)*nearbyRoad.rightX+(posZ-nearbyRoad.z)*nearbyRoad.rightZ
+        headingOffsetFromRoadRad = worldAngle-nearbyRoad.headingRad
+        totalDistanceDrivenM += kotlin.math.hypot(dx,dz)
 
         // Soft road/sidewalk boundary + guardrail collision
         val maxLat = (sample.widthM * 0.5f) + if (sample.isUrbanStreet) 0.55f else 1.65f
@@ -474,21 +519,15 @@ class VehiclePhysicsEngine {
         } else 0f
         driftSlipAngleDeg += (targetSlip - driftSlipAngleDeg) * (dt * 6.5f).coerceAtMost(1f)
 
-        val targetPitch = (-accelMs2 * 0.0095f / suspMult).coerceIn(-0.095f, 0.095f)
-        val targetRoll = (-cornerLatG * 0.0135f / suspMult + sample.bankAngleRad * 0.45f).coerceIn(-0.135f, 0.135f)
+        suspension.step(dt, spec, RoadSplineNetwork.sampleAt(distanceAlongRoadM), lateralOffsetM,
+            headingOffsetFromRoadRad, effectiveMassKg, suspMult)
+        val contact = suspension.contacts
+        val targetPitch = (-kotlin.math.atan(contact.along / spec.wheelbaseM) - accelMs2 * 0.0095f / suspMult).coerceIn(-0.095f, 0.095f)
+        val targetRoll = (kotlin.math.atan(contact.across / spec.trackWidthM) - cornerLatG * 0.0135f / suspMult + sample.bankAngleRad * 0.45f).coerceIn(-0.135f, 0.135f)
         chassisPitchRad += (targetPitch - chassisPitchRad) * (dt * 7.5f).coerceAtMost(1f)
         chassisRollRad += (targetRoll - chassisRollRad) * (dt * 7.5f).coerceAtMost(1f)
 
-        val surfaceRoughness = when (surface) {
-            SurfaceType.ASPHALT -> 0.004f
-            SurfaceType.DIRT -> 0.022f
-            SurfaceType.GRAVEL -> 0.028f
-            SurfaceType.SAND -> 0.018f
-            SurfaceType.MUD -> 0.024f
-            SurfaceType.ROCK -> 0.042f
-        }
-        val bumpSpeedFactor = (abs(forwardSpeedMs) / 18f).coerceIn(0f, 1.3f)
-        suspensionBounceM = sin(distanceAlongRoadM * 1.45f) * surfaceRoughness * bumpSpeedFactor / suspMult
+        suspensionBounceM = suspension.heave
 
         // Auto-sweep wipers in rain or when manually switched on
         if (wipersOn || weather == WeatherPreset.LIGHT_RAIN || weather == WeatherPreset.HEAVY_RAIN) {
@@ -499,17 +538,10 @@ class VehiclePhysicsEngine {
         }
 
         // RPM calculation
-        val gearSpeedSpan = max(5f, maxSpeedMs / spec.forwardGearsCount.toFloat())
-        val speedRatioInGear = if (driveDir == 0) {
-            throttle * 0.68f
-        } else {
-            ((abs(forwardSpeedMs) % gearSpeedSpan) / gearSpeedSpan * 0.78f + throttle * 0.24f).coerceIn(0f, 1.04f)
-        }
-        val targetRpm = if (!engineRunning || fuelLiters <= 0.01f) {
-            0f
-        } else {
-            spec.idleRpm + (spec.redlineRpm - spec.idleRpm) * speedRatioInGear
-        }
+        val freeRpm = spec.idleRpm + throttle * (spec.redlineRpm - spec.idleRpm)
+        val engagedRpm = maxOf(spec.idleRpm + throttle * 450f, shaftRpm)
+        val targetRpm = if (!engineRunning || fuelLiters <= .01f) 0f else
+            (freeRpm + (engagedRpm - freeRpm) * coupling).coerceAtMost(spec.redlineRpm)
         currentRpm += (targetRpm - currentRpm) * (dt * 9f).coerceAtMost(1f)
 
         // Turbo Spool Boost, Exhaust Backfire Pops & Asphalt Tire Screech Dynamics
@@ -550,7 +582,14 @@ class VehiclePhysicsEngine {
             damage = damage.copy(dirtMudLevel = (damage.dirtMudLevel + mudRate * dt).coerceAtMost(1f))
         }
 
-        syncWorldPosition()
+        val roadHere = RoadSplineNetwork.sampleAt(distanceAlongRoadM)
+        if (streetPosition.hitBoundary || kotlin.math.abs(lateralOffsetM - streetPosition.lateralM) > .01f ||
+            distanceAlongRoadM <= 8f || distanceAlongRoadM >= RoadSplineNetwork.TOTAL_ROAD_LENGTH_M - 15f) {
+            posX = roadHere.x + roadHere.rightX*lateralOffsetM
+            posZ = roadHere.z + roadHere.rightZ*lateralOffsetM
+        }
+        posY = roadHere.y + customization.rideHeightOffsetM
+        headingRad = roadHere.headingRad + headingOffsetFromRoadRad
 
         // Nearby POI / service station detection
         var nearServiceType: String? = null
@@ -599,6 +638,8 @@ class VehiclePhysicsEngine {
             steeringWheelAngleDeg = currentSteerInputNorm * (wheelRotationRangeDeg * 0.5f),
             driftSlipAngleDeg = driftSlipAngleDeg,
             suspensionBounceM = suspensionBounceM,
+            roadWetness = roadWetness,
+            wheelHeights = suspension.contacts,
             roadCurvatureRadPerM = currentSample.curvatureRadPerM,
             altitudeM = altitudeM,
             pitchDeg = chassisPitchRad * 180f / PI.toFloat(),

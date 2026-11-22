@@ -280,6 +280,10 @@ data class HudCustomizationSettings(
     val buttonScale: Float = 1.0f,
     val hudOpacity: Float = 0.92f,
     val showMinimap: Boolean = true,
+    val seatHeightM: Float = 0f,
+    val seatDepthM: Float = 0f,
+    val cockpitFov: Float = 68f,
+    val cameraMotion: Float = 1f,
     val rearMirrorEnabled: Boolean = true,
     val targetFps: Int = 60,
     val tiltSensitivity: Float = 1.0f,
@@ -417,6 +421,8 @@ data class VehicleTelemetry(
     val steeringInputNorm: Float = 0f,
     val steeringWheelAngleDeg: Float = 0f,
     val driftSlipAngleDeg: Float = 0f,
+    val roadWetness: Float = 0f,
+    val wheelHeights: WheelContacts = WheelContacts(),
     val suspensionBounceM: Float = 0f,
     val roadCurvatureRadPerM: Float = 0f,
     val altitudeM: Float = 1420f,
@@ -599,7 +605,7 @@ data class DrivingTripLog(
 
 data class PhoneDatabaseStats(
     val dbName: String = "masalik_yemen.db",
-    val schemaVersion: Int = 2,
+    val schemaVersion: Int = 3,
     val engineLabelAr: String = "Room SQLite (محلي 100% على الهاتف)",
     val storageUsedKb: Long = 16L,
     val totalTripsCount: Int = 0,
@@ -620,7 +626,8 @@ data class EngineeringTestResult(
 
 @Serializable
 data class SaveGameSchema(
-    val schemaVersion: Int = 2,
+    val missionRun: MissionProgress? = null,
+    val schemaVersion: Int = 3,
     val timestampIso: String = "",
     val playerNameAr: String = "سائق مَسَالِك",
     val selectedVehicleId: VehicleId = VehicleId.SHAHIQ,

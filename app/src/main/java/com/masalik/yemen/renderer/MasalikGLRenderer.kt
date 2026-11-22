@@ -37,10 +37,12 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 class MasalikGLRenderer(
+    private val assets: android.content.res.AssetManager,
     private val onFirstFrame: () -> Unit = {},
     private val onStepFrame: (dtSec: Float) -> RenderFrameSnapshot
 ) : GLSurfaceView.Renderer {
 
+    private val bodies = mutableMapOf<Pair<VehicleId, Boolean>, GpuMesh>()
     private var firstFrameReported = false
     private var frameQuality = com.masalik.yemen.game.GraphicsQuality.HIGH
 
@@ -59,6 +61,9 @@ class MasalikGLRenderer(
         val weather: WeatherPreset,
         val livingWorld: LivingWorldSimulation,
         val finishDistanceM: Float?,
+        val objectiveLane: Float = 2.85f,
+        val isStop: Boolean = false,
+        val controls: com.masalik.yemen.game.HudCustomizationSettings = com.masalik.yemen.game.HudCustomizationSettings(),
         val blinkerOn: Boolean,
         val wheelStyle: SteeringWheelStyle = SteeringWheelStyle.EUROPEAN_LUXURY,
         val seatSide: DriverSeatSide = DriverSeatSide.LEFT_HAND,
@@ -120,7 +125,8 @@ class MasalikGLRenderer(
         GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
 
         shaders = ShaderLibrary()
-        textures = ProceduralTextures()
+        bodies.clear()
+        textures = ProceduralTextures(assets)
         roundedMesh = GpuMesh(VisualMeshData.roundedBox())
         humanMesh = GpuMesh(VisualMeshData.ellipsoid())
         cubeMesh = MeshPrimitives.createUnitCube()
@@ -181,10 +187,7 @@ class MasalikGLRenderer(
         val t = snap.telemetry
 
         val centerDist = t.distanceAlongRoadM
-        if (abs(centerDist - lastStreamCenterDistM) > 55f) {
-            rebuildStreamingCorridor(centerDist)
-            lastStreamCenterDistM = centerDist
-        }
+        streamCorridor(centerDist)
 
         // Update 3D Drift Smoke, Desert Dust, Rain Spray, Exhaust Backfire Flames & Asphalt Skidmarks
         val playerSpec = VehicleFleetCatalog.specOf(t.vehicleId)
@@ -225,7 +228,7 @@ class MasalikGLRenderer(
             snap.cameraMode == CameraMode.FREE_PHOTO -> snap.photoFovDeg
             snap.cameraMode == CameraMode.CINEMATIC_ORBIT -> 54f + speedFovBoost * 0.55f
             snap.cameraMode == CameraMode.HOOD -> 64f + speedFovBoost * 0.65f
-            snap.cameraMode == CameraMode.COCKPIT || (snap.isReplayMode && snap.replayCameraAngle == ReplayCameraAngle.COCKPIT) -> 68f + speedFovBoost * 0.45f
+            snap.cameraMode == CameraMode.COCKPIT || (snap.isReplayMode && snap.replayCameraAngle == ReplayCameraAngle.COCKPIT) -> snap.controls.cockpitFov + speedFovBoost * .45f * snap.controls.cameraMotion
             else -> 58f + speedFovBoost
         }
         Matrix.perspectiveM(projMatrix, 0, fov, aspectRatio, 0.16f, 440f)
@@ -271,12 +274,7 @@ class MasalikGLRenderer(
         GLES30.glUniform3f(shaders.uHeadlightDir, fwdX, -0.075f, fwdZ)
         GLES30.glUniform1f(shaders.uHeadlightStrength, activeHeadlightStrength.coerceAtMost(2.2f))
 
-        val roadWetness = when (snap.weather) {
-            WeatherPreset.HEAVY_RAIN -> 0.85f
-            WeatherPreset.LIGHT_RAIN -> 0.55f
-            WeatherPreset.MOUNTAIN_FOG -> 0.25f
-            else -> 0.04f
-        }
+        val roadWetness = .04f + .82f * t.roadWetness
         GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
         GLES30.glUniform1i(shaders.uTexture, 0)
 
@@ -297,6 +295,7 @@ class MasalikGLRenderer(
         drawYemeniCityEnvironment(centerDist, snap, atmo)
         if (!snap.isLobbyOrGarage) drawMarketStalls(centerDist, atmo)
         drawTownStreetGrid(centerDist)
+        drawTaizLandmarks(centerDist)
         drawRoundaboutsAndCrossStreets(centerDist, atmo)
         drawSpeedRadars(centerDist, atmo)
         if (!snap.isLobbyOrGarage) {
@@ -453,13 +452,13 @@ class MasalikGLRenderer(
                     // Authentic Left-Hand Drive vs Right-Hand Drive driver eye position with G-force shift!
                     val seatSign = if (snap.seatSide == DriverSeatSide.LEFT_HAND) -1f else 1f
                     val gLongShift = (-t.throttle * 0.055f + t.brake * 0.065f).coerceIn(-0.07f, 0.08f)
-                    eyeX = t.posX + fwdX * (0.16f + gLongShift) + rightX * (seatSign * 0.38f)
-                    eyeY = t.posY + 1.40f + t.suspensionBounceM * 0.72f
-                    eyeZ = t.posZ + fwdZ * (0.16f + gLongShift) + rightZ * (seatSign * 0.38f)
+                    eyeX = t.posX + fwdX * (0.16f + snap.controls.seatDepthM + gLongShift * snap.controls.cameraMotion) + rightX * (seatSign * 0.38f)
+                    eyeY = t.posY + 1.40f + snap.controls.seatHeightM + t.suspensionBounceM * .72f * snap.controls.cameraMotion
+                    eyeZ = t.posZ + fwdZ * (0.16f + snap.controls.seatDepthM + gLongShift * snap.controls.cameraMotion) + rightZ * (seatSign * 0.38f)
                     targetX = eyeX + fwdX * 28f + rightX * (steerApexLook * 1.45f)
                     targetY = eyeY - 0.40f + t.pitchDeg * 0.032f
                     targetZ = eyeZ + fwdZ * 28f + rightZ * (steerApexLook * 1.45f)
-                    val cockpitRoll = (t.rollDeg * 0.0085f).coerceIn(-0.075f, 0.075f)
+                    val cockpitRoll = (t.rollDeg * 0.0085f * snap.controls.cameraMotion).coerceIn(-0.075f, 0.075f)
                     upX = rightX * cockpitRoll; upZ = rightZ * cockpitRoll
                     camInitialized = false
                 }
@@ -532,8 +531,32 @@ class MasalikGLRenderer(
         Matrix.setLookAtM(viewMatrix, 0, eyeX, eyeY, eyeZ, targetX, targetY, targetZ, upX, upY, upZ)
     }
 
-    private fun rebuildStreamingCorridor(centerDistM: Float) {
-        val startM = (centerDistM - 150f).coerceAtLeast(0f)
+    private data class Corridor(val center: Float, val road: FloatArray, val sidewalks: FloatArray, val terrain: FloatArray)
+    private var pendingCorridor: java.util.concurrent.CompletableFuture<Corridor>? = null
+    private fun streamCorridor(center: Float) {
+        fun upload(c: Corridor) {
+            roadDynamicMesh.upload(c.road)
+            sidewalkDynamicMesh.upload(c.sidewalks)
+            terrainDynamicMesh.upload(c.terrain)
+            lastStreamCenterDistM = c.center
+        }
+        if (abs(center - lastStreamCenterDistM) > 165f) {
+            pendingCorridor = null
+            upload(buildCorridor(center))
+            return
+        }
+        val pending = pendingCorridor
+        if (pending != null && pending.isDone) {
+            val result = pending.join()
+            pendingCorridor = null
+            if (abs(result.center - center) < 100f) upload(result)
+        }
+        if (pendingCorridor == null && abs(center - lastStreamCenterDistM) > 50f)
+            pendingCorridor = java.util.concurrent.CompletableFuture.supplyAsync { buildCorridor(center) }
+    }
+
+    private fun buildCorridor(centerDistM: Float): Corridor {
+        val startM = (centerDistM - 340f).coerceAtLeast(0f)
         val endM = (centerDistM + 340f).coerceAtMost(RoadSplineNetwork.TOTAL_ROAD_LENGTH_M)
         val step = 5f
         val samples = mutableListOf<RoadSample>()
@@ -542,7 +565,7 @@ class MasalikGLRenderer(
             samples.add(RoadSplineNetwork.sampleAt(d))
             d += step
         }
-        if (samples.size < 2) return
+        check(samples.size >= 2)
 
         val roadVerts = ArrayList<Float>(samples.size * 48)
         val sidewalkVerts = ArrayList<Float>(samples.size * 96)
@@ -616,9 +639,7 @@ class MasalikGLRenderer(
             }
         }
 
-        roadDynamicMesh.upload(roadVerts.toFloatArray())
-        sidewalkDynamicMesh.upload(sidewalkVerts.toFloatArray())
-        terrainDynamicMesh.upload(terrainVerts.toFloatArray())
+        return Corridor(centerDistM, roadVerts.toFloatArray(), sidewalkVerts.toFloatArray(), terrainVerts.toFloatArray())
     }
 
     private fun drawCorridorGeometry(regionId: RegionId, surface: SurfaceType, isModernBoulevard: Boolean, wetness: Float) {
@@ -1039,6 +1060,17 @@ class MasalikGLRenderer(
         val finishM = snap.finishDistanceM
         if (finishM != null && abs(finishM - centerDistM) < 230f) {
             val s = RoadSplineNetwork.sampleAt(finishM)
+            if (snap.isStop) {
+                val x = s.x + s.rightX * snap.objectiveLane
+                val z = s.z + s.rightZ * snap.objectiveLane
+                for (side in intArrayOf(-1, 1)) {
+                    drawOrientedBox(x + s.rightX * side * 1.6f, s.y + .10f, z + s.rightZ * side * 1.6f,
+                        s.headingRad, .16f, .07f, 9f, .95f, .74f, .15f)
+                    drawOrientedBox(x + sin(s.headingRad) * side * 4.5f, s.y + .10f, z + cos(s.headingRad) * side * 4.5f,
+                        s.headingRad, 3.3f, .07f, .16f, .95f, .74f, .15f)
+                }
+                return
+            }
             for (side in intArrayOf(-1, 1)) {
                 val lat = side * (s.widthM * 0.5f + 0.8f)
                 drawOrientedBox(s.x + s.rightX * lat, s.y + 3.5f, s.z + s.rightZ * lat, s.headingRad, 0.5f, 7f, 0.5f, 0.96f, 0.62f, 0.06f, emR = 0.55f, emG = 0.32f)
@@ -1077,6 +1109,32 @@ class MasalikGLRenderer(
                 if (atmo.nightFactor > 0.25f) drawOrientedBox(x, s.y + 2.48f, z, s.headingRad,
                     0.12f, 0.18f, 0.14f, 1f, 0.78f, 0.41f, emR = 0.9f, emG = 0.55f, emB = 0.18f)
             }
+        }
+    }
+
+    private fun drawTaizLandmarks(center: Float) {
+        fun box(d: Float, lane: Float, y: Float, w: Float, h: Float, l: Float, r: Float, g: Float, b: Float) {
+            val s = RoadSplineNetwork.sampleAt(d)
+            drawOrientedBox(s.x + s.rightX * lane, s.y + y, s.z + s.rightZ * lane, s.headingRad,
+                w,h,l,r,g,b)
+        }
+        if (abs(center - 230f) < 240f) {
+            val ramp = com.masalik.yemen.game.TaizDriveway
+            for (i in 0..11) {
+                val d = ramp.distance - ramp.length * .5f + (i+.5f) * ramp.length / 12f
+                val h = ramp.height(d, ramp.lane)
+                box(d,ramp.lane,.24f+h/2,ramp.width,h+.02f,ramp.length/12f,.66f,.63f,.54f)
+            }
+            for (post in listOf(225f,235f)) box(post,39.2f,1.55f,.15f,3.1f,.15f,.32f,.21f,.14f)
+            for (i in 0..9) box(225.5f+i,39.2f,3.12f,4.5f,.14f,1.02f,
+                if (i%2==0) .72f else .95f, if (i%2==0) .22f else .82f,.34f)
+            for (i in 0..5) box(227f+i*1.1f,40.3f,.65f,1.25f,1.3f,1f,.52f,.36f,.19f)
+        }
+        if (abs(center - 2350f) < 340f) {
+            for (d in listOf(2347f,2353f)) for (side in listOf(10f,15f))
+                box(d,side,3.8f,.55f,8f,.55f,.55f,.53f,.47f)
+            box(2350f,12.5f,8.8f,7.2f,3.4f,8.3f,.53f,.73f,.72f)
+            box(2350f,12.5f,10.58f,7.4f,.23f,8.5f,.36f,.45f,.47f)
         }
     }
 
@@ -1648,7 +1706,14 @@ class MasalikGLRenderer(
         val isPickup = vehicleId in listOf(VehicleId.SAQR, VehicleId.BADIYA, VehicleId.MUNQIDH, VehicleId.NIMR)
         val isTruck = vehicleId == VehicleId.JABAL
         val isBus = vehicleId in listOf(VehicleId.HAFILAT, VehicleId.QAFILA)
-        val bodyMesh = roundedMesh
+        val lowDetail = frameQuality == com.masalik.yemen.game.GraphicsQuality.LOW
+        val bodyMesh = bodies.getOrPut(vehicleId to lowDetail) {
+            val lod = if (lowDetail) "low" else "high"
+            val bytes = assets.open("fleet/${vehicleId.name.lowercase()}_${lod}.mesh").use { it.readBytes() }
+            val floats = FloatArray(bytes.size / 4)
+            ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(floats)
+            GpuMesh(floats)
+        }
 
         drawOrientedMesh(
             bodyMesh,
@@ -1836,13 +1901,13 @@ class MasalikGLRenderer(
         for (sx in intArrayOf(-1, 1)) {
             drawWheel(
                 t.posX + rightX * (sx * tr) + fwdX * wb,
-                t.posY + spec.wheelRadiusM,
+                t.posY + spec.wheelRadiusM + (if (sx < 0) t.wheelHeights.frontLeft else t.wheelHeights.frontRight),
                 t.posZ + rightZ * (sx * tr) + fwdZ * wb,
                 visualHeading, t.frontSteerRad, t.wheelRotationRad, spec.wheelRadiusM, 0.33f
             )
             drawWheel(
                 t.posX + rightX * (sx * tr) - fwdX * wb,
-                t.posY + spec.wheelRadiusM,
+                t.posY + spec.wheelRadiusM + (if (sx < 0) t.wheelHeights.rearLeft else t.wheelHeights.rearRight),
                 t.posZ + rightZ * (sx * tr) - fwdZ * wb,
                 visualHeading, 0f, t.wheelRotationRad, spec.wheelRadiusM, 0.35f
             )
@@ -1924,6 +1989,17 @@ class MasalikGLRenderer(
             metallic = 0.72f, roughness = 0.16f
         )
 
+        val bus = t.vehicleId == VehicleId.HAFILAT || t.vehicleId == VehicleId.QAFILA
+        val utility = t.vehicleId in listOf(VehicleId.SAQR, VehicleId.NIMR, VehicleId.JABAL, VehicleId.SHAHIQ, VehicleId.BADIYA)
+        if (bus) {
+            // Passenger grab pole and fare shelf visible from both seat positions.
+            for (side in listOf(.71f,.82f)) drawOrientedBox(t.posX + rightX*side*seatSign, t.posY+1.42f,
+                t.posZ + rightZ*side*seatSign, t.headingRad,.038f,1.15f,.038f,.86f,.62f,.13f)
+        } else if (utility) {
+            val grip = -seatSign*.48f
+            drawOrientedBox(t.posX + fwdX*.76f + rightX*grip,t.posY+1.23f,t.posZ + fwdZ*.76f + rightZ*grip,
+                t.headingRad,.42f,.055f,.065f,.40f,.37f,.30f)
+        }
         // 2. Sculpted Soft-Touch Leather Dashboard + Wood/Carbon Trim Strip
         drawOrientedBox(t.posX + fwdX * 0.84f, t.posY + 1.04f, t.posZ + fwdZ * 0.84f, t.headingRad, 1.80f, 0.38f, 0.48f, 0.09f, 0.10f, 0.12f, metallic = 0.15f, roughness = 0.65f)
         val (trimR, trimG, trimB) = when (wheelStyle) {

@@ -1,0 +1,318 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 3,
+    "identityHash": "1fd0ffb5fac034e31abea831f901496a",
+    "entities": [
+      {
+        "tableName": "player_profile",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `playerNameAr` TEXT NOT NULL, `selectedVehicleId` TEXT NOT NULL, `masalikCoins` INTEGER NOT NULL, `driverXp` INTEGER NOT NULL, `drivingRealism` TEXT NOT NULL, `graphicsQuality` TEXT NOT NULL, `timeOfDay` TEXT NOT NULL, `autoTimeCycleEnabled` INTEGER NOT NULL, `worldTimeHours` REAL NOT NULL, `weather` TEXT NOT NULL, `playerDistanceM` REAL NOT NULL, `lastRegionId` TEXT NOT NULL, `visitedCitiesJson` TEXT NOT NULL, `discoveredPoisJson` TEXT NOT NULL, `totalCareerDistanceM` REAL NOT NULL, `missionRunJson` TEXT, `timestampIso` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "playerNameAr",
+            "columnName": "playerNameAr",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "selectedVehicleId",
+            "columnName": "selectedVehicleId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "masalikCoins",
+            "columnName": "masalikCoins",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "driverXp",
+            "columnName": "driverXp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "drivingRealism",
+            "columnName": "drivingRealism",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "graphicsQuality",
+            "columnName": "graphicsQuality",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timeOfDay",
+            "columnName": "timeOfDay",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "autoTimeCycleEnabled",
+            "columnName": "autoTimeCycleEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "worldTimeHours",
+            "columnName": "worldTimeHours",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "weather",
+            "columnName": "weather",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "playerDistanceM",
+            "columnName": "playerDistanceM",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastRegionId",
+            "columnName": "lastRegionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "visitedCitiesJson",
+            "columnName": "visitedCitiesJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discoveredPoisJson",
+            "columnName": "discoveredPoisJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalCareerDistanceM",
+            "columnName": "totalCareerDistanceM",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "missionRunJson",
+            "columnName": "missionRunJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "timestampIso",
+            "columnName": "timestampIso",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "garage_fleet",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`vehicleId` TEXT NOT NULL, `unlocked` INTEGER NOT NULL, `fuelLiters` REAL NOT NULL, `damageJson` TEXT NOT NULL, `customizationJson` TEXT NOT NULL, PRIMARY KEY(`vehicleId`))",
+        "fields": [
+          {
+            "fieldPath": "vehicleId",
+            "columnName": "vehicleId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unlocked",
+            "columnName": "unlocked",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fuelLiters",
+            "columnName": "fuelLiters",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "damageJson",
+            "columnName": "damageJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "customizationJson",
+            "columnName": "customizationJson",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "vehicleId"
+          ]
+        }
+      },
+      {
+        "tableName": "mission_records",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`missionId` TEXT NOT NULL, `bestTimeSec` REAL NOT NULL, `completionCount` INTEGER NOT NULL, PRIMARY KEY(`missionId`))",
+        "fields": [
+          {
+            "fieldPath": "missionId",
+            "columnName": "missionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bestTimeSec",
+            "columnName": "bestTimeSec",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completionCount",
+            "columnName": "completionCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "missionId"
+          ]
+        }
+      },
+      {
+        "tableName": "settings_hud",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `hudSettingsJson` TEXT NOT NULL, `audioMixerJson` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hudSettingsJson",
+            "columnName": "hudSettingsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "audioMixerJson",
+            "columnName": "audioMixerJson",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "radio_preferences",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `radioSettingsJson` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "radioSettingsJson",
+            "columnName": "radioSettingsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "driving_logs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `timestampIso` TEXT NOT NULL, `vehicleId` TEXT NOT NULL, `regionId` TEXT NOT NULL, `regionNameAr` TEXT NOT NULL, `distanceKm` REAL NOT NULL, `maxSpeedKmh` REAL NOT NULL, `durationSec` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestampIso",
+            "columnName": "timestampIso",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "vehicleId",
+            "columnName": "vehicleId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "regionId",
+            "columnName": "regionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "regionNameAr",
+            "columnName": "regionNameAr",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "distanceKm",
+            "columnName": "distanceKm",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maxSpeedKmh",
+            "columnName": "maxSpeedKmh",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationSec",
+            "columnName": "durationSec",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1fd0ffb5fac034e31abea831f901496a')"
+    ]
+  }
+}

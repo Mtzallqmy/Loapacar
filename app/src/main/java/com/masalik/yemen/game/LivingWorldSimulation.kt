@@ -622,6 +622,23 @@ class LivingWorldSimulation {
         return null
     }
 
+    fun captureNearby(distance: Float) = WorldTrafficFrame(
+        trafficVehicles.filter { abs(it.distanceM - distance) < 320f }.map { it.copy() },
+        pedestrians.filter { abs(it.distanceM - distance) < 180f }.map { it.copy() },
+        trafficSignals.map { it.copy() })
+
+    fun showRecorded(frame: WorldTrafficFrame) {
+        trafficVehicles.clear()
+        trafficVehicles.addAll(frame.cars)
+        pedestrians.clear()
+        pedestrians.addAll(frame.people)
+        for ((signal, saved) in trafficSignals.zip(frame.signals)) {
+            signal.phase = saved.phase
+            signal.secondsRemaining = saved.secondsRemaining
+            signal.pedestriansCrossing = saved.pedestriansCrossing
+        }
+    }
+
     fun checkPlayerTrafficCollision(playerDistM: Float, playerLatM: Float, playerSpeedMs: Float): Float {
         for (car in trafficVehicles) {
             val dDiff = abs(car.distanceM - playerDistM)

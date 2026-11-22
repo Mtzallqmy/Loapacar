@@ -4,11 +4,15 @@ package com.masalik.yemen.game
  * Lock-free circular 20-second driving telemetry recorder (30Hz = 600 frames)
  * powering the Instant Cinematic Replay Studio, Slow-Motion & Drone Camera.
  */
+data class WorldTrafficFrame(val cars: List<TrafficVehicleAgent>, val people: List<PedestrianAgent>,
+                             val signals: List<TrafficSignalRuntime>)
+
 data class ReplayFrame(
     val telemetry: VehicleTelemetry,
     val worldTimeHours: Float,
     val weather: WeatherPreset,
-    val blinkerOn: Boolean
+    val blinkerOn: Boolean,
+    val world: WorldTrafficFrame? = null
 )
 
 class ReplayRecorder(private val maxFrames: Int = 600) {
@@ -24,10 +28,11 @@ class ReplayRecorder(private val maxFrames: Int = 600) {
     @Volatile var isPlaying: Boolean = true
     @Volatile var cameraAngle: ReplayCameraAngle = ReplayCameraAngle.DRONE_ORBIT
 
-    fun recordStep(dt: Float, frame: ReplayFrame) {
+    fun recordStep(dt: Float, makeFrame: () -> ReplayFrame) {
         sampleAccumSec += dt
-        if (sampleAccumSec < 0.033f) return
-        sampleAccumSec = 0f
+        if (sampleAccumSec < 1f / 30f) return
+        sampleAccumSec %= (1f / 30f)
+        val frame = makeFrame()
         synchronized(this) {
             ring[writeIndex] = frame
             writeIndex = (writeIndex + 1) % maxFrames
@@ -59,7 +64,7 @@ class ReplayRecorder(private val maxFrames: Int = 600) {
     fun stepPlayback(dt: Float): ReplayFrame? {
         val snap = playbackSnapshot
         if (snap.isEmpty()) return null
-        val totalDurationSec = (snap.size * 0.033f).coerceAtLeast(1f)
+        val totalDurationSec = (snap.size / 30f).coerceAtLeast(1f)
         if (isPlaying) {
             playbackProgress += (dt * playbackSpeed) / totalDurationSec
             if (playbackProgress > 1f) playbackProgress = 0f
@@ -68,7 +73,7 @@ class ReplayRecorder(private val maxFrames: Int = 600) {
         return snap[idx]
     }
 
-    fun durationSeconds(): Float = (playbackSnapshot.size * 0.033f).coerceAtLeast(0f)
+    fun durationSeconds(): Float = (playbackSnapshot.size / 30f).coerceAtLeast(0f)
 
     fun clear() {
         synchronized(this) {

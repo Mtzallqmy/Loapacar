@@ -1,5 +1,7 @@
 package com.masalik.yemen.data
 
+import androidx.room.withTransaction
+import com.masalik.yemen.game.MissionProgress
 import android.content.Context
 import com.masalik.yemen.game.AudioMixerSettings
 import com.masalik.yemen.game.DamageState
@@ -26,8 +28,9 @@ import java.time.Instant
 
 class MasalikRepository(
     private val context: Context,
-    private val dao: MasalikDao
+    private val database: MasalikDatabase
 ) {
+    private val dao = database.masalikDao()
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -102,7 +105,8 @@ class MasalikRepository(
             .getOrDefault(emptyList())
 
         SaveGameSchema(
-            schemaVersion = 2,
+            schemaVersion = 3,
+            missionRun = profile.missionRunJson?.let { runCatching { json.decodeFromString<MissionProgress>(it) }.getOrNull() },
             timestampIso = profile.timestampIso,
             playerNameAr = profile.playerNameAr,
             selectedVehicleId = runCatching { VehicleId.valueOf(profile.selectedVehicleId) }.getOrDefault(VehicleId.SHAHIQ),
@@ -131,7 +135,7 @@ class MasalikRepository(
         )
     }
 
-    suspend fun persistSaveGame(save: SaveGameSchema) = withContext(Dispatchers.IO) {
+    suspend fun persistSaveGame(save: SaveGameSchema) = database.withTransaction {
         val nowIso = Instant.now().toString()
         dao.upsertProfile(
             PlayerProfileEntity(
@@ -151,6 +155,7 @@ class MasalikRepository(
                 visitedCitiesJson = json.encodeToString(save.visitedCities),
                 discoveredPoisJson = json.encodeToString(save.discoveredPois),
                 totalCareerDistanceM = save.totalCareerDistanceM,
+                missionRunJson = save.missionRun?.let { json.encodeToString(it) },
                 timestampIso = nowIso
             )
         )
@@ -170,6 +175,7 @@ class MasalikRepository(
         dao.upsertGarageVehicles(fleetEntities)
 
         val missionIds = (save.missionCompletions.keys + save.missionBestTimesSec.keys).distinct()
+        dao.clearMissions()
         if (missionIds.isNotEmpty()) {
             dao.upsertMissionRecords(
                 missionIds.map { mid ->
@@ -211,7 +217,7 @@ class MasalikRepository(
         )
     }
 
-    suspend fun resetAllData(): SaveGameSchema = withContext(Dispatchers.IO) {
+    suspend fun resetAllData(): SaveGameSchema = database.withTransaction {
         dao.clearProfile()
         dao.clearGarage()
         dao.clearMissions()
@@ -240,7 +246,7 @@ class MasalikRepository(
         }
         PhoneDatabaseStats(
             dbName = MasalikDatabase.DB_NAME,
-            schemaVersion = 2,
+            schemaVersion = 3,
             engineLabelAr = "Room SQLite (محلي 100% على الهاتف)",
             storageUsedKb = sizeKb,
             totalTripsCount = dao.getTotalTripsCount(),

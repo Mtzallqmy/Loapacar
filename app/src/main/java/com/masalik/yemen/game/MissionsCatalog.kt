@@ -74,7 +74,7 @@ object MissionsCatalog {
         val storyConfigs = listOf(
             // Chapter 1: Taiz
             Triple("انطلاقة شارع جمال", 120f, 920f),
-            Triple("توصيل بضائع باب موسى", 600f, 1550f),
+            Triple("رحلة البن من سوق تعز إلى مطل صبر والعودة", 90f, 2350f),
             Triple("صعود مطل جبل صبر", 1200f, 2250f),
             Triple("دورية المساء في تعز", 300f, 1450f),
             Triple("سباق قمة صبر الودي", 1500f, 2550f),
@@ -132,7 +132,7 @@ object MissionsCatalog {
                     targetTimeSec = (((endM - startM) / 11f).toInt()).coerceIn(65, 195),
                     rewardCoins = 1200 + idx * 240,
                     rewardXp = 120 + idx * 25,
-                    recommendedVehicleId = chapterVehicles[(chapId - 1) % chapterVehicles.size],
+                    recommendedVehicleId = if (idx == 1) VehicleId.SAQR else chapterVehicles[(chapId - 1) % chapterVehicles.size],
                     weatherPreset = if (idx % 5 == 2 || idx % 5 == 3) chapterWeathers[chapId - 1] else WeatherPreset.CLEAR,
                     timeOfDayPreset = chapterTimes[(idx) % chapterTimes.size],
                     hasAiRival = isBossRace,

@@ -50,13 +50,22 @@ private data class StationSynthSpec(
     val chordRootsHz: FloatArray
 )
 
-class MasalikAudioEngine {
+class MasalikAudioEngine(private val assets: android.content.res.AssetManager) {
+    private fun readPcm(name: String): ShortArray {
+        val bytes = assets.open("audio/$name.pcm").use { it.readBytes() }
+        return ShortArray(bytes.size / 2).also {
+            java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(it)
+        }
+    }
+    private val recordedEngine by lazy { readPcm("engine") }
+    private val starter by lazy { readPcm("start") }
 
     private val sampleRate = 22050
     private val running = AtomicBoolean(false)
     private var audioThread: Thread? = null
     private var audioTrack: AudioTrack? = null
 
+    @Volatile var insideCabin = false
     @Volatile var mixer: AudioMixerSettings = AudioMixerSettings()
     @Volatile var radioSettings: RadioPlayerSettings = RadioPlayerSettings()
     @Volatile var engineRunning: Boolean = true
@@ -177,6 +186,11 @@ class MasalikAudioEngine {
     }
 
     private fun runAudioLoop() {
+        val recorded = recordedEngine
+        val ignition = starter
+        var recordedPhase = 0f
+        var starterIndex = ignition.size
+        var wasRunning = engineRunning
         val chunkSamples = 1024
         val buffer = ShortArray(chunkSamples)
         val rng = Random(2026)
@@ -215,6 +229,8 @@ class MasalikAudioEngine {
         val twoPi = 2.0 * PI
 
         while (running.get()) {
+            if (drivingActive && engineRunning && !wasRunning) starterIndex = 0
+            wasRunning = engineRunning
             val m = mixer
             val r = radioSettings
             val master = if (m.muted) 0f else m.masterVolume
@@ -230,8 +246,8 @@ class MasalikAudioEngine {
                 shutterTrigger = 0f
             }
 
-            val engVol = if (drivingActive && engineRunning) m.engineVolume * 0.28f else 0f
-            val envVol = if (drivingActive) m.environmentVolume * 0.16f else 0f
+            val engVol = if (drivingActive && engineRunning) m.engineVolume * if (insideCabin) .21f else .28f else 0f
+            val envVol = if (drivingActive) m.environmentVolume * if (insideCabin) .085f else .16f else 0f
             val musicVol = if (r.isPlaying && m.musicEnabled) m.musicVolume * r.volume * 0.34f else 0f
             val sfxVol = m.sfxVolume * 0.30f
 
@@ -273,7 +289,13 @@ class MasalikAudioEngine {
                     val engWave = (sin(engPhase) * voice.fundamental + sin(engPhase2) * voice.second +
                         sin(engPhase * 3.0) * voice.third + sin(engPhase * 4.0) * voice.fourth +
                         (rng.nextFloat() * 2f - 1f) * voice.roughness * (1f - rpmRatio.coerceAtMost(1f))).toFloat()
-                    mechSample += engWave * engVol * load
+                    val index = recordedPhase.toInt()
+                    val next = (index + 1) % recorded.size
+                    val frac = recordedPhase - index
+                    val engineLayer = (recorded[index] * (1f - frac) + recorded[next] * frac) / 32768f
+                    recordedPhase = (recordedPhase + (.60f + rpmRatio * 2.2f) * (engineBaseFreqHz / 65f).coerceIn(.7f,1.35f)) % recorded.size
+                    mechSample += (engWave * .62f + engineLayer * 1.25f) * engVol * load
+                    if (starterIndex < ignition.size) mechSample += ignition[starterIndex++] / 32768f * engVol
 
                     // High-frequency Turbo Spool Whistle
                     if (turboGain > 0.002f) {

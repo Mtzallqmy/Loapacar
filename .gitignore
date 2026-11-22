@@ -15,3 +15,9 @@ coverage/
 keystore.properties
 .env
 .env.*
+
+.gradle/
+.kotlin/
+local.properties
+*.apk
+*.aab

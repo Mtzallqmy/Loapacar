@@ -14,8 +14,8 @@ import androidx.room.RoomDatabase
         RadioPreferenceEntity::class,
         DrivingTripLogEntity::class
     ],
-    version = 2,
-    exportSchema = false
+    version = 3,
+    exportSchema = true
 )
 abstract class MasalikDatabase : RoomDatabase() {
     abstract fun masalikDao(): MasalikDao
@@ -32,7 +32,11 @@ abstract class MasalikDatabase : RoomDatabase() {
                     context.applicationContext,
                     MasalikDatabase::class.java,
                     DB_NAME
-                ).fallbackToDestructiveMigration(dropAllTables = true).build().also { INSTANCE = it }
+                ).addMigrations(object : androidx.room.migration.Migration(2, 3) {
+                    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                        db.execSQL("ALTER TABLE player_profile ADD COLUMN missionRunJson TEXT")
+                    }
+                }).build().also { INSTANCE = it }
             }
         }
     }

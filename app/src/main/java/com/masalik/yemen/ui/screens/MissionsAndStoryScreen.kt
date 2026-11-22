@@ -135,7 +135,7 @@ fun MissionsAndStoryScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             MissionTabPill("طور القصة (5 فصول)", Icons.Default.AutoStories, activeTab == 0, Modifier.weight(1f)) { activeTab = 0 }
-            MissionTabPill("جميع المهمات الـ 65", Icons.Default.Flag, activeTab == 1, Modifier.weight(1f)) { activeTab = 1 }
+            MissionTabPill("جميع المهمات الـ 71", Icons.Default.Flag, activeTab == 1, Modifier.weight(1f)) { activeTab = 1 }
             MissionTabPill("تحديات اليوم", Icons.Default.Today, activeTab == 2, Modifier.weight(1f)) { activeTab = 2 }
         }
 

@@ -89,6 +89,8 @@ import com.masalik.yemen.game.CameraMode
 import com.masalik.yemen.game.HeadlightBeamMode
 import com.masalik.yemen.game.HudWidgetId
 import com.masalik.yemen.game.PhotoColorFilter
+import com.masalik.yemen.game.StreetNavigation
+import com.masalik.yemen.game.MapPoint
 import com.masalik.yemen.game.RoadSplineNetwork
 import com.masalik.yemen.game.TimeOfDayPreset
 import com.masalik.yemen.game.TrafficSignalPhase
@@ -133,6 +135,7 @@ fun DrivingHudOverlay(
     var cameraPickerOpen by remember { mutableStateOf(false) }
     var minimapExpanded by remember { mutableStateOf(false) }
     var gasLevel by remember { mutableFloatStateOf(0f) }
+    var clutchLevel by remember { mutableFloatStateOf(0f) }
     var brakeLevel by remember { mutableFloatStateOf(0f) }
     var handbrakeOn by remember { mutableStateOf(false) }
 
@@ -298,9 +301,8 @@ fun DrivingHudOverlay(
 
                 // Active Mission Progress Card
                 state.activeMission?.let { mission ->
-                    val progress = ((t.distanceAlongRoadM - mission.startDistanceM) /
-                        (mission.finishDistanceM - mission.startDistanceM).coerceAtLeast(10f)).coerceIn(0f, 1f)
-                    val remainingM = (mission.finishDistanceM - t.distanceAlongRoadM).coerceAtLeast(0f).roundToInt()
+                    val progress = state.missionFraction
+                    val remainingM = kotlin.math.hypot(state.objectiveM - t.distanceAlongRoadM, state.objectiveLane - t.lateralOffsetM).roundToInt()
                     Column(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
@@ -311,8 +313,9 @@ fun DrivingHudOverlay(
                     ) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(mission.titleAr, color = MasalikAmberSoft, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            Text("${state.missionTimeRemainingSec}ث", color = MasalikSky, fontFamily = JetBrainsMonoFontFamily, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(if (mission.hasAiRival) "${state.missionTimeRemainingSec}ث" else "${(state.missionFraction * 100).toInt()}%", color = MasalikSky, fontFamily = JetBrainsMonoFontFamily, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
+                        Text(state.objectiveAr, color = MasalikIvory, fontSize = 11.sp)
                         LinearProgressIndicator(
                             progress = { progress },
                             modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).height(4.dp).clip(RoundedCornerShape(4.dp)),
@@ -324,7 +327,7 @@ fun DrivingHudOverlay(
                             if (mission.hasAiRival) {
                                 Text("المركز: #${t.playerRaceRank}", color = MasalikEmerald, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             } else if (mission.cargoRequiredPct > 0) {
-                                Text("سلامة الحمولة: ${t.damage.cargoIntegrityPct.roundToInt()}%", color = MasalikEmerald, fontSize = 10.sp)
+                                Text("سلامة الحمولة: ${state.missionCondition.roundToInt()}%", color = MasalikEmerald, fontSize = 10.sp)
                             }
                         }
                     }
@@ -459,7 +462,8 @@ fun DrivingHudOverlay(
             // Top Left (RTL End): Expandable GPS Minimap
             if (hud.showMinimap) {
                 GpsMinimapCard(
-                    distanceM = t.distanceAlongRoadM,
+                    distanceM = t.distanceAlongRoadM, lateral = t.lateralOffsetM, heading = t.headingRad,
+                    target = if (state.activeMission != null) MapPoint(state.objectiveM,state.objectiveLane) else null,
                     expanded = minimapExpanded,
                     onToggleExpand = { minimapExpanded = !minimapExpanded }
                 )
@@ -634,6 +638,14 @@ fun DrivingHudOverlay(
                 }
             )
 
+            if (t.transmissionMode == "manual") {
+                AnalogAluminumPedal("كلتش", "CLUTCH", clutchLevel, MasalikSky,
+                    (46f * pedalScale).dp, (88f * pedalScale).dp, "clutch_pedal", hud.smartWheel.hapticFeedback) {
+                    clutchLevel = it
+                    vm.inputClutch = it
+                }
+            }
+
             // Progressive Analog Brake Pedal (Vertical slide modulates 30%..100% braking!)
             AnalogAluminumPedal(
                 titleAr = "فرامل",
@@ -739,7 +751,8 @@ fun DrivingHudOverlay(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("إيقاف مؤقت — مَسَالِك", color = MasalikAmberSoft, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                    if (state.activeMission != null) ToolChip("إلغاء المهمة", false) { vm.cancelMission() }
+                    Text("إيقاف مؤقت — سيارتي", color = MasalikAmberSoft, fontSize = 20.sp, fontWeight = FontWeight.Black)
                     Button(
                         onClick = { vm.setModal(ActiveModal.DRIVING) },
                         modifier = Modifier.fillMaxWidth().height(48.dp).testTag("resume_button"),
@@ -810,6 +823,7 @@ private fun AnalogAluminumPedal(
                         val fracFromBottom = (1f - (yPx / size.height.coerceAtLeast(1))).coerceIn(0f, 1f)
                         return (0.35f + fracFromBottom * 0.65f).coerceIn(0.35f, 1f)
                     }
+                    try {
                     onLevelChanged(calcLevel(down.position.y))
                     while (true) {
                         val ev = awaitPointerEvent()
@@ -821,6 +835,7 @@ private fun AnalogAluminumPedal(
                         onLevelChanged(calcLevel(c.position.y))
                         c.consume()
                     }
+                    } finally { onLevelChanged(0f) }
                 }
             }
     ) {
@@ -1041,7 +1056,10 @@ private fun PhotoModeOverlay(
 }
 
 @Composable
-private fun GpsMinimapCard(distanceM: Float, expanded: Boolean, onToggleExpand: () -> Unit) {
+private fun GpsMinimapCard(distanceM: Float, lateral: Float, heading: Float, target: MapPoint?, expanded: Boolean, onToggleExpand: () -> Unit) {
+    val route = remember((distanceM / 8).toInt(), (lateral / 3).toInt(), target) {
+        if (target != null) StreetNavigation.route(MapPoint(distanceM,lateral),target) else emptyList()
+    }
     val sizeDp = if (expanded) 160.dp else 98.dp
     Column(
         modifier = Modifier
@@ -1077,7 +1095,34 @@ private fun GpsMinimapCard(distanceM: Float, expanded: Boolean, onToggleExpand: 
                 d += 15f
             }
             drawPath(path, color = MasalikAmber, style = Stroke(width = 4f))
-            drawCircle(color = MasalikSky, radius = 6f, center = Offset(w * 0.5f, h * 0.65f))
+            fun point(d: Float, l: Float): Offset {
+                val s = RoadSplineNetwork.sampleAt(d)
+                return Offset(w*.5f + (s.x+s.rightX*l-centerSample.x)*scale,
+                    h*.65f - (s.z+s.rightZ*l-centerSample.z)*scale)
+            }
+            fun segment(a: MapPoint, b: MapPoint, color: Color, width: Float) {
+                val lo = distanceM-270f
+                val hi = distanceM+270f
+                if (minOf(a.d,b.d)>hi || maxOf(a.d,b.d)<lo) return
+                if (a.d == b.d) { drawLine(color,point(a.d,a.l),point(b.d,b.l),width); return }
+                val begin = a.d.coerceIn(lo,hi)
+                val end = b.d.coerceIn(lo,hi)
+                val count = (kotlin.math.abs(end-begin)/12).toInt()+1
+                fun sample(d: Float) = point(d, a.l+(b.l-a.l)*(d-a.d)/(b.d-a.d))
+                var last = sample(begin)
+                for (i in 1..count) {
+                    val next = sample(begin+(end-begin)*i/count)
+                    drawLine(color,last,next,width)
+                    last = next
+                }
+            }
+            for (street in StreetNavigation.streets) if (street.a.l != 0f || street.b.l != 0f)
+                segment(street.a,street.b,MasalikMuted,2f)
+            route.zipWithNext { a,b -> segment(a,b,MasalikEmerald,3f) }
+            target?.let { drawCircle(MasalikAmber,4f,point(it.d,it.l)) }
+            val here = point(distanceM,lateral)
+            drawCircle(MasalikSky,4f,here)
+            drawLine(MasalikIvory,here,here+Offset(kotlin.math.sin(heading)*10f,-kotlin.math.cos(heading)*10f),2.5f)
         }
     }
 }
