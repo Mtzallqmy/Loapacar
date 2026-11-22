@@ -64,6 +64,7 @@ data class MasalikUiState(
     val previewVehicleId: VehicleId = VehicleId.SHAHIQ,
     val activeMission: MissionDefinition? = null,
     val missionTimeRemainingSec: Int = 0,
+    val missionAction: String? = null,
     val missionFraction: Float = 0f,
     val objectiveAr: String = "",
     val objectiveM: Float = 0f,
@@ -355,6 +356,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             var radar: com.masalik.yemen.game.SpeedRadarDef? = null
             while (fixedRemainder + 1e-9 >= tick) {
                 livingWorld.update(tick.toFloat(), physics.distanceAlongRoadM, physics.lateralOffsetM, physics.forwardSpeedMs, atmo.nightFactor, physics.weather)
+                physics.jobPayloadKg = run?.payloadKg ?: 0f
                 previousTelemetry = lastTelemetry
                 lastTelemetry = physics.step(tick.toFloat(), inputs, livingWorld)
                 val journey = run
@@ -456,6 +458,14 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
                     activeTimePhase = LivingWorldSimulation.hoursToPreset(worldTimeHours),
                     missionTimeRemainingSec = remSec,
                     objectiveAr = run?.target?.let { it.label + if (it.isStop) " · جلنط لثانيتين" else "" } ?: "",
+                    missionAction = run?.takeIf { it.waitingForAction }?.target?.let {
+                        when (it.kind) {
+                            com.masalik.yemen.game.ObjectiveKind.LOAD -> "تحميل وتثبيت"
+                            com.masalik.yemen.game.ObjectiveKind.UNLOAD -> "تفريغ الشحنة"
+                            com.masalik.yemen.game.ObjectiveKind.ATTACH -> "توصيل المقطورة"
+                            else -> "فتح باب الركاب"
+                        }
+                    },
                     missionFraction = run?.let { it.stage.toFloat()/it.objectives.size } ?: 0f,
                     objectiveM = run?.target?.distance ?: 0f,
                     objectiveLane = run?.target?.lane ?: 2.85f,
@@ -540,6 +550,8 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    @Synchronized fun operateMissionEquipment() { run?.useEquipment() }
+
     @Synchronized fun cancelMission() {
         run = null
         physics.configureAiRival(false)
@@ -601,6 +613,8 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         val custom = current.customizations[chosenVehicle]
             ?: VehicleFleetCatalog.defaultCustomizations().getValue(chosenVehicle)
         physics.selectVehicle(chosenVehicle, custom, current.fuelByVehicle[chosenVehicle], current.damageByVehicle[chosenVehicle])
+        inputHandbrake = false
+        inputClutch = 0f
         run = MissionRun(mission)
         physics.weather = mission.weatherPreset
         physics.resetToRoad(mission.startDistanceM)

@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.22)
+project(mycar_contacts LANGUAGES C CXX)
+add_library(mycar_contacts SHARED tire.c vehicle_contacts.cpp)
+target_compile_features(mycar_contacts PRIVATE cxx_std_17)
+if(NOT ANDROID)
+    find_package(JNI REQUIRED)
+    target_include_directories(mycar_contacts PRIVATE ${JNI_INCLUDE_DIRS})
+endif()

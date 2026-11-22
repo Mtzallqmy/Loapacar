@@ -315,6 +315,7 @@ fun DrivingHudOverlay(
                             Text(mission.titleAr, color = MasalikAmberSoft, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             Text(if (mission.hasAiRival) "${state.missionTimeRemainingSec}ث" else "${(state.missionFraction * 100).toInt()}%", color = MasalikSky, fontFamily = JetBrainsMonoFontFamily, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
+                        state.missionAction?.let { ToolChip(it, true) { vm.operateMissionEquipment() } }
                         Text(state.objectiveAr, color = MasalikIvory, fontSize = 11.sp)
                         LinearProgressIndicator(
                             progress = { progress },

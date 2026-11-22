@@ -451,8 +451,8 @@ private fun DashboardTelltaleStrip(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = if (telemetry.assists.absEnabled) "ABS" else "—",
-                color = if (telemetry.assists.absEnabled) Color(0xFF94A3B8) else MasalikCrimson,
+                text = when { telemetry.absActive -> "ABS"; telemetry.escActive -> "ESC"; telemetry.tcsActive -> "TCS"; else -> "—" },
+                color = if (telemetry.absActive || telemetry.escActive || telemetry.tcsActive) MasalikAmber else Color(0xFF94A3B8),
                 fontFamily = JetBrainsMonoFontFamily,
                 fontSize = 7.5.sp,
                 fontWeight = FontWeight.Bold

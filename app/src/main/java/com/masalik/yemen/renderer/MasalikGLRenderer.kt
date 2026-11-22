@@ -1064,10 +1064,10 @@ class MasalikGLRenderer(
                 val x = s.x + s.rightX * snap.objectiveLane
                 val z = s.z + s.rightZ * snap.objectiveLane
                 for (side in intArrayOf(-1, 1)) {
-                    drawOrientedBox(x + s.rightX * side * 1.6f, s.y + .10f, z + s.rightZ * side * 1.6f,
-                        s.headingRad, .16f, .07f, 9f, .95f, .74f, .15f)
-                    drawOrientedBox(x + sin(s.headingRad) * side * 4.5f, s.y + .10f, z + cos(s.headingRad) * side * 4.5f,
-                        s.headingRad, 3.3f, .07f, .16f, .95f, .74f, .15f)
+                    drawOrientedBox(x + s.rightX * side * 2.4f, s.y + .10f, z + s.rightZ * side * 2.4f,
+                        s.headingRad, .16f, .07f, 12f, .95f, .74f, .15f)
+                    drawOrientedBox(x + sin(s.headingRad) * side * 6f, s.y + .10f, z + cos(s.headingRad) * side * 6f,
+                        s.headingRad, 4.8f, .07f, .16f, .95f, .74f, .15f)
                 }
                 return
             }
@@ -1895,6 +1895,15 @@ class MasalikGLRenderer(
             drawOrientedBox(t.posX + fwdX * cabOffset + rightX * 0.38f, roofY, t.posZ + fwdZ * cabOffset + rightZ * 0.38f, visualHeading, 0.45f, 0.20f, 0.26f, 0.12f, 0.55f, 1f, emB = if (!flashA) 1.9f else 0.1f, emG = if (!flashA) 0.7f else 0.05f)
         }
 
+        if (t.jobPayloadKg in 275f..300f && (isPickup || isTruck)) {
+            for (side in listOf(-1,1)) {
+                val x = t.posX - fwdX * len*.30f + rightX * side * wid*.20f
+                val z = t.posZ - fwdZ * len*.30f + rightZ * side * wid*.20f
+                drawOrientedMesh(roundedMesh,x,baseY+lowerH+.20f,z,visualHeading,pitchDeg,rollDeg,
+                    wid*.36f,.46f,len*.26f,.57f,.42f,.25f)
+                drawOrientedBox(x,baseY+lowerH+.44f,z,visualHeading,wid*.38f,.035f,.09f,.24f,.21f,.15f)
+            }
+        }
         // 7. 4 High-Detail 24-Segment Alloy Wheels with Red Brake Calipers & Steering Angle
         val wb = spec.wheelbaseM * 0.5f
         val tr = spec.trackWidthM * 0.5f

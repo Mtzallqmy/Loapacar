@@ -73,6 +73,9 @@ class VehiclePhysicsEngine {
         private set
 
     // Drivetrain & systems
+    private val tires = TireSolver()
+    private var lastAcceleration = 0f
+    var jobPayloadKg = 0f
     val suspension = WheelSuspension()
     var assistedClutch = true
     private var previousEngagement = 0f
@@ -151,6 +154,7 @@ class VehiclePhysicsEngine {
         lateralOffsetM = laneOffsetM
         suspension.reset()
         previousEngagement = 0f
+        lastAcceleration = 0f
         forwardSpeedMs = 0f
         lateralSpeedMs = 0f
         headingOffsetFromRoadRad = 0f
@@ -228,7 +232,7 @@ class VehiclePhysicsEngine {
         val brakeMult = 1f + (customization.brakeUpgradeLevel - 1) * 0.09f
 
         val cargoMassKg = (spec.maxCargoKg * (customization.cargoLoadPct / 100f))
-        val effectiveMassKg = spec.baseMassKg + cargoMassKg
+        val effectiveMassKg = spec.baseMassKg + (cargoMassKg + jobPayloadKg).coerceAtMost(spec.maxCargoKg + 900f)
 
         // Tire + Surface + Weather grip
         val shoulders = if (surface == SurfaceType.ASPHALT && !sample.isUrbanStreet) {
@@ -365,17 +369,14 @@ class VehiclePhysicsEngine {
             val curve = (.71f + .29f * sin((currentRpm / spec.redlineRpm).coerceIn(0f,1f) * PI.toFloat()))
             val torqueN = spec.maxEngineTorqueNm * curve * engineMult * ratio * 4.1f * .86f /
                 spec.wheelRadiusM * throttle * engineHealthFactor * coupling
-            val drivenLoad = if (drivetrainMode == DrivetrainMode.FOUR_L || drivetrainMode == DrivetrainMode.FOUR_H ||
-                drivetrainMode == DrivetrainMode.AWD) .92f else .58f
-            val tractionLimit = effectiveMassKg * 9.81f * totalGrip * drivenLoad
-            driveForceN = minOf(torqueN, tractionLimit) * driveDir
+            driveForceN = torqueN * driveDir
             // Speed governor
             if (driveDir > 0 && forwardSpeedMs >= maxSpeedMs) driveForceN = 0f
             if (driveDir < 0 && forwardSpeedMs <= -14f) driveForceN = 0f
         }
 
         // Braking & Park & HDC
-        val maxBrake = spec.maxBrakeForceN * brakeMult * (if (assists.absEnabled) 1.0f else 0.88f)
+        val maxBrake = spec.maxBrakeForceN * brakeMult
         var brakeForceN = brake * maxBrake * totalGrip.coerceAtMost(1.15f)
         if (input.handbrake || (!manual && autoShifter == AutomaticShifterState.P)) {
             brakeForceN += maxBrake * 0.85f
@@ -385,6 +386,11 @@ class VehiclePhysicsEngine {
             brakeForceN += maxBrake * 0.35f
         }
 
+        val forces = tires.step(spec,sample,lateralOffsetM,headingOffsetFromRoadRad,totalGrip,
+            effectiveMassKg,forwardSpeedMs,currentFrontSteerRad,lastAcceleration,driveForceN,brakeForceN,
+            drivetrainMode != DrivetrainMode.TWO_WD,assists)
+        driveForceN = forces[0]
+        brakeForceN = forces[1]
         // Gravity slope + Aero drag + Surface rolling resistance
         val slopeSin = (sample.gradePct / 100f).coerceIn(-0.28f, 0.28f)
         val gravityForceN = -effectiveMassKg * 9.81f * slopeSin
@@ -424,7 +430,7 @@ class VehiclePhysicsEngine {
             spec.wheelbaseM, totalGrip * if (input.handbrake) 0.72f else 1f,
             realismMode == DrivingRealismMode.ARCADE)
 
-        headingOffsetFromRoadRad = headingRad - sample.headingRad + yawRate * dt
+        headingOffsetFromRoadRad = headingRad - sample.headingRad + yawRate * dt + forces[2] * dt * dt / (effectiveMassKg * spec.wheelbaseM)
         // Gentle lane-keeping assist when steering is neutral and assist enabled
         if (steeringAssistEnabled && abs(currentSteerInputNorm) < 0.06f && abs(forwardSpeedMs) > 2f && abs(lateralOffsetM) < sample.widthM * 0.5f && abs(headingOffsetFromRoadRad) < 0.9f) {
             val alignStrength = if (realismMode == DrivingRealismMode.ARCADE) 3.4f else 1.85f
@@ -513,6 +519,7 @@ class VehiclePhysicsEngine {
         // Wheel spin, realistic drift slip angle & suspension pitch/roll/bounce feel
         wheelRotationRad = (wheelRotationRad + (forwardSpeedMs / spec.wheelRadiusM) * dt) % (2f * PI.toFloat())
         val accelMs2 = (forwardSpeedMs - prevSpeed) / dt
+        lastAcceleration = accelMs2.coerceIn(-14f, 12f)
         val cornerLatG = (yawRate * forwardSpeedMs) + (sample.curvatureRadPerM * forwardSpeedMs * forwardSpeedMs * 0.45f)
         val targetSlip = if (abs(forwardSpeedMs) > 7f && (input.handbrake || abs(cornerLatG) > 5.5f * totalGrip)) {
             ((cornerLatG / (totalGrip * 7.5f)) * (if (input.handbrake) 22f else 11f)).coerceIn(-28f, 28f)
@@ -638,7 +645,8 @@ class VehiclePhysicsEngine {
             steeringWheelAngleDeg = currentSteerInputNorm * (wheelRotationRangeDeg * 0.5f),
             driftSlipAngleDeg = driftSlipAngleDeg,
             suspensionBounceM = suspensionBounceM,
-            roadWetness = roadWetness,
+            absActive = forces[3] > .5f, tcsActive = forces[4] > .5f, escActive = forces[5] > .5f,
+            jobPayloadKg = jobPayloadKg, roadWetness = roadWetness,
             wheelHeights = suspension.contacts,
             roadCurvatureRadPerM = currentSample.curvatureRadPerM,
             altitudeM = altitudeM,

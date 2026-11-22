@@ -21,3 +21,5 @@ keystore.properties
 local.properties
 *.apk
 *.aab
+.cxx/
+.externalNativeBuild/

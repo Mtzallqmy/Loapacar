@@ -20,6 +20,24 @@ class MissionRun(val mission: MissionDefinition, saved: MissionProgress? = null)
         private set
     var elapsed = saved?.elapsed ?: 0f
         private set
+    var waitingForAction = false
+        private set
+    private var actionTaken = false
+    fun useEquipment() {
+        if (waitingForAction) actionTaken = true
+    }
+    private var lastSpeed: Float? = null
+    val payloadKg: Float get() {
+        var payload = 0f
+        for (i in 0 until stage) when (objectives[i].kind) {
+            ObjectiveKind.LOAD -> payload = 280f
+            ObjectiveKind.BOARD -> payload += 140f
+            ObjectiveKind.ATTACH -> payload = 820f
+            ObjectiveKind.ALIGHT, ObjectiveKind.UNLOAD -> payload = 0f
+            else -> Unit
+        }
+        return payload
+    }
     private var dwell = 0f
     var condition = saved?.cargoCondition ?: 100f
         private set
@@ -43,8 +61,19 @@ class MissionRun(val mission: MissionDefinition, saved: MissionProgress? = null)
             failure = "تضررت الشحنة أثناء النقل. أعد المحاولة بقيادة أهدأ."
             return
         }
-        val inZone = abs(t.distanceAlongRoadM - goal.distance) <= (if (goal.isStop) 5f else 8f) &&
-            abs(t.lateralOffsetM - goal.lane) <= (if (goal.isStop) 1.65f else 6f)
+        val speedBefore = lastSpeed ?: t.forwardSpeedMs
+        lastSpeed = t.forwardSpeedMs
+        if (mission.category == GameModeCategory.PASSENGER && stage > 0) {
+            val acceleration = abs(t.forwardSpeedMs-speedBefore) / dt.coerceAtLeast(.001f)
+            condition = (condition - (acceleration-4f).coerceAtLeast(0f)*dt*.65f).coerceAtLeast(0f)
+            if (condition < 45f) { failure = "تعذّر إكمال الرحلة بسبب انزعاج الركاب من القيادة"; return }
+        }
+        val spec = VehicleFleetCatalog.specOf(t.vehicleId)
+        val relativeYaw = abs(kotlin.math.sin(headingOffset))
+        val halfLength = (spec.bodyLengthM + relativeYaw * spec.bodyWidthM) * .5f
+        val halfWidth = (spec.bodyWidthM + relativeYaw * spec.bodyLengthM) * .5f
+        val inZone = abs(t.distanceAlongRoadM - goal.distance) <= (if (goal.isStop) (6f-halfLength).coerceAtLeast(.8f) else 8f) &&
+            abs(t.lateralOffsetM - goal.lane) <= (if (goal.isStop) (2.4f-halfWidth).coerceAtLeast(.35f) else 6f)
         val alignment = cos(headingOffset) * (if (goal.reverseRoute) -1f else 1f)
         if (!goal.isStop) {
             if (inZone && alignment * t.forwardSpeedMs > 0.15f) stage++
@@ -53,10 +82,14 @@ class MissionRun(val mission: MissionDefinition, saved: MissionProgress? = null)
         val secured = t.handbrake || (t.transmissionMode == "auto" && t.autoShifter == AutomaticShifterState.P)
         if (!inZone || t.speedKmh > 0.8f || abs(alignment) < 0.90f || !secured) {
             dwell = 0f
+            waitingForAction = false
+            actionTaken = false
             return
         }
+        waitingForAction = goal.kind != ObjectiveKind.PARK && !actionTaken
+        if (waitingForAction) return
         dwell += dt
-        if (dwell >= 2f) { stage++; dwell = 0f }
+        if (dwell >= 2f) { stage++; dwell = 0f; actionTaken = false; waitingForAction = false }
     }
 
     companion object {
