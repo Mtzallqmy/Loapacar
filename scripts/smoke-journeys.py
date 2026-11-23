@@ -1,0 +1,61 @@
+"""Exercise the three lobby routes via Android accessibility and capture their first frames."""
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+from xml.etree import ElementTree
+
+package = "com.masalik.yemen.preview"
+out = Path("journey-captures")
+out.mkdir(exist_ok=True)
+
+def adb(*args, timeout=25):
+    return subprocess.check_output(["adb", *args], timeout=timeout)
+
+def find_label(label, click=False):
+    deadline = time.monotonic() + 100
+    while time.monotonic() < deadline:
+        try:
+            adb("shell", "uiautomator", "dump", "--compressed", "/sdcard/journey-ui.xml", timeout=15)
+            data = adb("shell", "cat", "/sdcard/journey-ui.xml")
+            nodes = ElementTree.fromstring(data).iter("node")
+            for node in nodes:
+                if not any(value == label or value.startswith(label+" · ")
+                           for value in (node.get("text",""),node.get("content-desc",""))):
+                    continue
+                if click:
+                    x1,y1,x2,y2=map(int,re.findall(r"\d+",node.attrib["bounds"]))
+                    adb("shell","input","tap",str((x1+x2)//2),str((y1+y2)//2))
+                return
+        except (subprocess.SubprocessError,ElementTree.ParseError):
+            pass
+        time.sleep(1)
+    raise RuntimeError(f"Missing Android UI label: {label}")
+
+def capture(name):
+    (out / f"{name}.png").write_bytes(adb("exec-out","screencap","-p"))
+
+try:
+    adb("shell","wm","size","720x1280")
+    adb("shell","wm","density","160")
+    for slug, place, objective in [
+        ("ibb","إب","عند المدرجات · ثبّت السيارة وحمّل أكياس البن"),
+        ("sanaa","صنعاء","توقّف في الشارع الشرقي الموازي لصعود الركاب"),
+        ("aden","عدن","تابع السير بمحاذاة البحر")
+    ]:
+        # Reset only the disposable test install on the CI emulator.
+        adb("shell","pm","clear",package)
+        adb("shell","am","start","-W","-n",package+"/com.masalik.yemen.MainActivity")
+        find_label(place,click=True)
+        find_label("انطلق في الرحلة")
+        capture("menu-"+slug)
+        find_label("انطلق في الرحلة",click=True)
+        find_label(objective)
+        capture(slug)
+        print(f"Opened {slug} from lobby and observed its first objective",flush=True)
+finally:
+    logs=adb("logcat","-d","MasalikShader:E","AndroidRuntime:E","*:S")
+    (out/"android.log").write_bytes(logs)
+    if b"Shader compile error" in logs or b"Program link failed" in logs or b"FATAL EXCEPTION" in logs:
+        sys.exit("Android runtime or shader failure; inspect android.log")

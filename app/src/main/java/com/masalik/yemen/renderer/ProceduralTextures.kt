@@ -1,5 +1,6 @@
 package com.masalik.yemen.renderer
 
+import com.masalik.yemen.game.SurfaceType
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -24,6 +25,7 @@ class ProceduralTextures(private val assets: android.content.res.AssetManager) {
     private fun photo(name: String): Bitmap = assets.open("materials/$name.jpg").use { android.graphics.BitmapFactory.decodeStream(it) }
 
     val whiteTex: Int
+    val naturalRoads: Map<SurfaceType, Int>
     val roadAsphaltTex: Int
     val modernBoulevardTex: Int
     val crosswalkTex: Int
@@ -47,6 +49,9 @@ class ProceduralTextures(private val assets: android.content.res.AssetManager) {
     init {
         maxAnisotropy = queryMaxAnisotropy()
         whiteTex = uploadBitmap(createWhiteBitmap(), repeat = true)
+        naturalRoads = SurfaceType.entries.filter { it != SurfaceType.ASPHALT }.associateWith { surface ->
+            uploadBitmap(photo("route_" + surface.name.lowercase(java.util.Locale.ROOT)), repeat = true)
+        }
         roadAsphaltTex = uploadBitmap(createAsphaltRoadBitmap(isBoulevard = false), repeat = true)
         modernBoulevardTex = uploadBitmap(createAsphaltRoadBitmap(isBoulevard = true), repeat = true)
         crosswalkTex = uploadBitmap(createCrosswalkBitmap(), repeat = false)

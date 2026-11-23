@@ -259,7 +259,7 @@ private fun MasalikRootScreen(
 
         if (!worldReady || !state.profileReady) {
             Box(Modifier.fillMaxSize().background(MasalikObsidian), contentAlignment = Alignment.Center) {
-                Text("مسالك\nجارٍ تجهيز الطرق والمركبات…", color = MasalikIvory, fontSize = 22.sp,
+                Text("سيارتي\nجارٍ تجهيز الطرق والمركبات…", color = MasalikIvory, fontSize = 22.sp,
                     fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }

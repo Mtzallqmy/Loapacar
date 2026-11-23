@@ -95,7 +95,9 @@ class MasalikGLRenderer(
     private lateinit var steerRingRound: GpuMesh
     private lateinit var steerRingFlat: GpuMesh
 
-    private lateinit var roadDynamicMesh: DynamicMesh
+    private data class RoadFinish(val surface: SurfaceType, val boulevard: Boolean)
+    private val roadMeshes = mutableMapOf<RoadFinish, DynamicMesh>()
+    private lateinit var shoulderMesh: DynamicMesh
     private lateinit var sidewalkDynamicMesh: DynamicMesh
     private lateinit var terrainDynamicMesh: DynamicMesh
     private var skyVboId: Int = 0
@@ -149,7 +151,8 @@ class MasalikGLRenderer(
         steerRingRound = MeshPrimitives.createSteeringRing(24, flatBottom = false)
         steerRingFlat = MeshPrimitives.createSteeringRing(24, flatBottom = true)
 
-        roadDynamicMesh = DynamicMesh()
+        roadMeshes.clear()
+        shoulderMesh = DynamicMesh()
         sidewalkDynamicMesh = DynamicMesh()
         terrainDynamicMesh = DynamicMesh()
 
@@ -288,8 +291,7 @@ class MasalikGLRenderer(
         GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
         GLES30.glUniform1i(shaders.uTexture, 0)
 
-        val curSample = RoadSplineNetwork.sampleAt(centerDist)
-        drawCorridorGeometry(t.regionId, t.surface, curSample.isModernBoulevard, roadWetness)
+        drawCorridorGeometry(t.regionId, roadWetness)
 
         // Persistent 3D Asphalt Skidmarks directly over road surface
         if (!isMirrorPass) {
@@ -561,11 +563,14 @@ class MasalikGLRenderer(
         Matrix.setLookAtM(viewMatrix, 0, eyeX, eyeY, eyeZ, targetX, targetY, targetZ, upX, upY, upZ)
     }
 
-    private data class Corridor(val center: Float, val road: FloatArray, val sidewalks: FloatArray, val terrain: FloatArray)
+    private data class Corridor(val center: Float, val roads: Map<RoadFinish, FloatArray>, val shoulders: FloatArray, val sidewalks: FloatArray, val terrain: FloatArray)
+    private val EMPTY_VERTICES = floatArrayOf()
     private var pendingCorridor: java.util.concurrent.CompletableFuture<Corridor>? = null
     private fun streamCorridor(center: Float) {
         fun upload(c: Corridor) {
-            roadDynamicMesh.upload(c.road)
+            for ((finish, mesh) in roadMeshes) if (finish !in c.roads) mesh.upload(EMPTY_VERTICES)
+            for ((finish, vertices) in c.roads) roadMeshes.getOrPut(finish) { DynamicMesh() }.upload(vertices)
+            shoulderMesh.upload(c.shoulders)
             sidewalkDynamicMesh.upload(c.sidewalks)
             terrainDynamicMesh.upload(c.terrain)
             lastStreamCenterDistM = c.center
@@ -586,7 +591,7 @@ class MasalikGLRenderer(
     }
 
     private fun buildCorridor(centerDistM: Float): Corridor {
-        val startM = (centerDistM - 340f).coerceAtLeast(0f)
+        val startM = kotlin.math.floor((centerDistM - 340f).coerceAtLeast(0f) / 5f) * 5f
         val endM = (centerDistM + 340f).coerceAtMost(RoadSplineNetwork.TOTAL_ROAD_LENGTH_M)
         val step = 5f
         val samples = mutableListOf<RoadSample>()
@@ -597,7 +602,8 @@ class MasalikGLRenderer(
         }
         check(samples.size >= 2)
 
-        val roadVerts = ArrayList<Float>(samples.size * 48)
+        val roads = mutableMapOf<RoadFinish, MutableList<Float>>()
+        val shoulderVerts = ArrayList<Float>()
         val sidewalkVerts = ArrayList<Float>(samples.size * 96)
         val terrainVerts = ArrayList<Float>(samples.size * 192)
 
@@ -616,6 +622,9 @@ class MasalikGLRenderer(
         for (i in 0 until samples.lastIndex) {
             val s0 = samples[i]
             val s1 = samples[i + 1]
+            val finish = RoadFinish(s0.surface, s0.isModernBoulevard && s0.surface == SurfaceType.ASPHALT)
+            val roadVerts = roads.getOrPut(finish) { ArrayList() }
+            val shoulder = if (s0.isUrbanStreet) sidewalkVerts else shoulderVerts
             val hw0 = s0.widthM * 0.5f
             val hw1 = s1.widthM * 0.5f
             val v0 = s0.distanceM * 0.08f
@@ -641,8 +650,8 @@ class MasalikGLRenderer(
                 val p1x = s0.x + s0.rightX * out0; val p1z = s0.z + s0.rightZ * out0
                 val p2x = s1.x + s1.rightX * out1; val p2z = s1.z + s1.rightZ * out1
                 val p3x = s1.x + s1.rightX * in1; val p3z = s1.z + s1.rightZ * in1
-                pushTri(sidewalkVerts, p0x, s0.y + swLift0, p0z, 0f, v0, p1x, s0.y + swLift0, p1z, 1f, v0, p2x, s1.y + swLift1, p2z, 1f, v1, 0f, 1f, 0f)
-                pushTri(sidewalkVerts, p0x, s0.y + swLift0, p0z, 0f, v0, p2x, s1.y + swLift1, p2z, 1f, v1, p3x, s1.y + swLift1, p3z, 0f, v1, 0f, 1f, 0f)
+                pushTri(shoulder, p0x, s0.y + swLift0, p0z, 0f, v0, p1x, s0.y + swLift0, p1z, 1f, v0, p2x, s1.y + swLift1, p2z, 1f, v1, 0f, 1f, 0f)
+                pushTri(shoulder, p0x, s0.y + swLift0, p0z, 0f, v0, p2x, s1.y + swLift1, p2z, 1f, v1, p3x, s1.y + swLift1, p3z, 0f, v1, 0f, 1f, 0f)
             }
 
             val offsets = floatArrayOf(hw0 + swW, hw0 + 18f, hw0 + 46f, hw0 + 88f)
@@ -660,41 +669,57 @@ class MasalikGLRenderer(
                     val ay1 = RoadSplineNetwork.terrainHeightAt(ax1, az1, s1, latA)
                     val by1 = RoadSplineNetwork.terrainHeightAt(bx1, bz1, s1, latB)
 
-                    val ny = 0.85f
-                    val nx = -side * 0.42f * s0.rightX
-                    val nz = -side * 0.42f * s0.rightZ
-                    pushTri(terrainVerts, ax0, ay0, az0, 0f, 0f, bx0, by0, bz0, 1f, 0f, bx1, by1, bz1, 1f, 1f, nx, ny, nz)
-                    pushTri(terrainVerts, ax0, ay0, az0, 0f, 0f, bx1, by1, bz1, 1f, 1f, ax1, ay1, az1, 0f, 1f, nx, ny, nz)
+                    fun terrainTri(ax: Float, ay: Float, az: Float, bx: Float, by: Float, bz: Float,
+                                   cx: Float, cy: Float, cz: Float) {
+                        val ux=bx-ax; val uy=by-ay; val uz=bz-az
+                        val vx=cx-ax; val vy=cy-ay; val vz=cz-az
+                        val nx=uy*vz-uz*vy; val ny=uz*vx-ux*vz; val nz=ux*vy-uy*vx
+                        val sign=if (ny<0f) -1f else 1f
+                        pushTri(terrainVerts,ax,ay,az,ax*.13f,az*.13f,bx,by,bz,bx*.13f,bz*.13f,
+                            cx,cy,cz,cx*.13f,cz*.13f,nx*sign,ny*sign,nz*sign)
+                    }
+                    terrainTri(ax0,ay0,az0,bx0,by0,bz0,bx1,by1,bz1)
+                    terrainTri(ax0,ay0,az0,bx1,by1,bz1,ax1,ay1,az1)
                 }
             }
         }
 
-        return Corridor(centerDistM, roadVerts.toFloatArray(), sidewalkVerts.toFloatArray(), terrainVerts.toFloatArray())
+        return Corridor(centerDistM, roads.mapValues { it.value.toFloatArray() }, shoulderVerts.toFloatArray(), sidewalkVerts.toFloatArray(), terrainVerts.toFloatArray())
     }
 
-    private fun drawCorridorGeometry(regionId: RegionId, surface: SurfaceType, isModernBoulevard: Boolean, wetness: Float) {
+    private fun drawCorridorGeometry(regionId: RegionId, wetness: Float) {
         Matrix.setIdentityM(modelMatrix, 0)
         Matrix.multiplyMM(mvpMatrix, 0, vpMatrix, 0, modelMatrix, 0)
         GLES30.glUniformMatrix4fv(shaders.uModelMatrix, 1, false, modelMatrix, 0)
         GLES30.glUniformMatrix4fv(shaders.uMvpMatrix, 1, false, mvpMatrix, 0)
         GLES30.glUniform3f(shaders.uEmissive, 0f, 0f, 0f)
 
-        val (rr, rg, rb, useTex) = when (surface) {
-            SurfaceType.ASPHALT -> Quad4(0.96f, 0.96f, 0.99f, 1f)
-            SurfaceType.DIRT -> Quad4(0.62f, 0.48f, 0.34f, 0.32f)
-            SurfaceType.GRAVEL -> Quad4(0.56f, 0.54f, 0.50f, 0.38f)
-            SurfaceType.SAND -> Quad4(0.86f, 0.72f, 0.44f, 0.24f)
-            SurfaceType.MUD -> Quad4(0.34f, 0.24f, 0.17f, 0.24f)
-            SurfaceType.ROCK -> Quad4(0.48f, 0.45f, 0.42f, 0.34f)
+        GLES30.glUniform1f(shaders.uUseTexture, 1f)
+        GLES30.glUniform1f(shaders.uMetallic, .025f)
+        GLES30.glUniform4f(shaders.uBaseColor, .98f, .97f, .95f, 1f)
+        for ((finish, mesh) in roadMeshes) {
+            if (mesh.vertexCount == 0) continue
+            val paved = finish.surface == SurfaceType.ASPHALT
+            val tex = when {
+                finish.boulevard -> textures.modernBoulevardTex
+                paved -> textures.roadAsphaltTex
+                else -> textures.naturalRoads.getValue(finish.surface)
+            }
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, tex)
+            GLES30.glUniform2f(shaders.uUvScale, 1f, if (paved) 1f else 1.6f)
+            GLES30.glUniform1f(shaders.uRoughness, when (finish.surface) {
+                SurfaceType.ASPHALT -> .52f
+                SurfaceType.MUD -> .48f
+                else -> .91f
+            })
+            GLES30.glUniform1f(shaders.uWetness, if (finish.surface == SurfaceType.MUD) maxOf(.48f, wetness) else wetness)
+            mesh.draw()
         }
-        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, if (isModernBoulevard) textures.modernBoulevardTex else textures.roadAsphaltTex)
-        GLES30.glUniform1f(shaders.uUseTexture, useTex)
-        GLES30.glUniform2f(shaders.uUvScale, 1f, 1f)
-        GLES30.glUniform1f(shaders.uMetallic, 0.08f)
-        GLES30.glUniform1f(shaders.uRoughness, if (surface == SurfaceType.ASPHALT) 0.52f else 0.88f)
-        GLES30.glUniform1f(shaders.uWetness, wetness)
-        GLES30.glUniform4f(shaders.uBaseColor, rr, rg, rb, 1f)
-        roadDynamicMesh.draw()
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, textures.naturalRoads.getValue(SurfaceType.GRAVEL))
+        GLES30.glUniform2f(shaders.uUvScale, 1f, 2.5f)
+        GLES30.glUniform1f(shaders.uRoughness, .9f)
+        GLES30.glUniform1f(shaders.uWetness, wetness*.4f)
+        shoulderMesh.draw()
 
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, textures.sidewalkStoneTex)
         GLES30.glUniform1f(shaders.uUseTexture, 1f)
@@ -714,8 +739,9 @@ class MasalikGLRenderer(
             RegionId.TIHAMA_PLAINS -> Triple(0.72f, 0.62f, 0.38f)
             RegionId.COASTAL_ROAD -> Triple(0.76f, 0.68f, 0.46f)
         }
-        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, textures.whiteTex)
-        GLES30.glUniform1f(shaders.uUseTexture, 0f)
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, textures.naturalRoads.getValue(SurfaceType.ROCK))
+        GLES30.glUniform2f(shaders.uUvScale, 1f, 1f)
+        GLES30.glUniform1f(shaders.uUseTexture, .52f)
         GLES30.glUniform1f(shaders.uMetallic, 0f)
         GLES30.glUniform1f(shaders.uRoughness, 0.94f)
         GLES30.glUniform1f(shaders.uWetness, 0f)
