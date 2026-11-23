@@ -96,6 +96,7 @@ class MissionRun(val mission: MissionDefinition, saved: MissionProgress? = null)
 
     companion object {
         fun objectivesFor(m: MissionDefinition): List<RoadObjective> {
+            YemenJourneys.byId[m.id]?.let { return it.stops }
             fun at(f: Float) = m.startDistanceM + (m.finishDistanceM - m.startDistanceM) * f
             fun stop(f: Float, kind: ObjectiveKind, label: String) = RoadObjective(at(f), 2.85f, kind, label)
             fun gate(f: Float) = RoadObjective(at(f), 2.85f, ObjectiveKind.GATE, "اعبر نقطة المسار بالاتجاه الصحيح")

@@ -26,19 +26,19 @@ jobs:
           keytool -genkeypair -keystore "$RUNNER_TEMP/mycar-ci.p12" -storetype PKCS12 -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 7 -dname "CN=Ephemeral CI Preview"
           echo "MASALIK_KEYSTORE=$RUNNER_TEMP/mycar-ci.p12" >> "$GITHUB_ENV"
       - name: Exercise physics, verify Android assets and assemble
-        run: ./gradlew :app:testDebugUnitTest :app:assemblePreview :app:lintPreview
+        run: ./gradlew :app:testDebugUnitTest :app:assembleJourneys :app:lintJourneys
       - name: Verify packaged native code and certificate
         run: |
-          apk=app/build/outputs/apk/preview/app-preview.apk
+          apk=app/build/outputs/apk/journeys/app-journeys.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 "$apk"
           unzip -t "$apk" lib/arm64-v8a/libmycar_contacts.so
-          sha256sum "$apk" > app/build/outputs/apk/preview/SHA256SUMS
+          sha256sum "$apk" > app/build/outputs/apk/journeys/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: MyCar-CI-Preview
+          name: MyCar-3.2-Journeys-Android8Plus-ARM64
           path: |
-            app/build/outputs/apk/preview/*.apk
-            app/build/outputs/apk/preview/SHA256SUMS
+            app/build/outputs/apk/journeys/*.apk
+            app/build/outputs/apk/journeys/SHA256SUMS
             app/build/test-results/testDebugUnitTest/*.xml
-            app/build/reports/lint-results-preview.html
+            app/build/reports/lint-results-journeys.html

@@ -271,6 +271,7 @@ private fun MasalikRootScreen(
                     saveState = state.saveState,
                     activeTimePhase = state.activeTimePhase,
                     onStartDriving = { vm.setModal(ActiveModal.DRIVING) },
+                    onJourney = vm::startMission,
                     onParkingLesson = {
                         val catalog = com.masalik.yemen.game.MissionsCatalog
                         vm.startMission(catalog.ALL_OFFLINE_MISSIONS.first { it.id == catalog.PARKING_LESSON_ID })

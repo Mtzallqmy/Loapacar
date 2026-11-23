@@ -95,8 +95,8 @@ fun MissionsAndStoryScreen(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Default.Flag, contentDescription = null, tint = MasalikAmber, modifier = Modifier.size(22.dp))
                 Column {
-                    Text("طور القصة والمهمات (71 مهمة · بدون إنترنت)", color = MasalikAmberSoft, fontWeight = FontWeight.Black, fontSize = 15.sp)
-                    Text("منجز: $completedCount / 71 مهمة · رصيدك: ${saveState.masalikCoins} ر.ي", color = MasalikMuted, fontSize = 11.sp)
+                    Text("طور القصة والمهمات (${MissionsCatalog.ALL_OFFLINE_MISSIONS.size} مهمة · بدون إنترنت)", color = MasalikAmberSoft, fontWeight = FontWeight.Black, fontSize = 15.sp)
+                    Text("منجز: $completedCount / ${MissionsCatalog.ALL_OFFLINE_MISSIONS.size} مهمة · رصيدك: ${saveState.masalikCoins} ر.ي", color = MasalikMuted, fontSize = 11.sp)
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -135,7 +135,7 @@ fun MissionsAndStoryScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             MissionTabPill("طور القصة (5 فصول)", Icons.Default.AutoStories, activeTab == 0, Modifier.weight(1f)) { activeTab = 0 }
-            MissionTabPill("جميع المهمات الـ 71", Icons.Default.Flag, activeTab == 1, Modifier.weight(1f)) { activeTab = 1 }
+            MissionTabPill("جميع المهمات الـ ${MissionsCatalog.ALL_OFFLINE_MISSIONS.size}", Icons.Default.Flag, activeTab == 1, Modifier.weight(1f)) { activeTab = 1 }
             MissionTabPill("تحديات اليوم", Icons.Default.Today, activeTab == 2, Modifier.weight(1f)) { activeTab = 2 }
         }
 

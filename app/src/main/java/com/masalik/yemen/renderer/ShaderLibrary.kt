@@ -37,6 +37,9 @@ class ShaderLibrary {
     val uSkyHorizonColor: Int
     val uSkySunDir: Int
     val uSkyNightFactor: Int
+    val uSkyView: Int
+    val uSkyLens: Int
+    val uSkyRelief: Int
     val uSkyTime: Int
 
     // Rear-view mirror FBO blit uniform locations
@@ -74,6 +77,9 @@ class ShaderLibrary {
         uSkyHorizonColor = GLES30.glGetUniformLocation(skyProgram, "uHorizonColor")
         uSkySunDir = GLES30.glGetUniformLocation(skyProgram, "uSunDir")
         uSkyNightFactor = GLES30.glGetUniformLocation(skyProgram, "uNightFactor")
+        uSkyView = GLES30.glGetUniformLocation(skyProgram, "uView")
+        uSkyLens = GLES30.glGetUniformLocation(skyProgram, "uLens")
+        uSkyRelief = GLES30.glGetUniformLocation(skyProgram, "uRelief")
         uSkyTime = GLES30.glGetUniformLocation(skyProgram, "uTime")
 
         uMirrorTex = GLES30.glGetUniformLocation(mirrorProgram, "uMirrorTex")
@@ -243,21 +249,24 @@ class ShaderLibrary {
 
         private const val SKY_VERT = """#version 300 es
             layout(location = 0) in vec2 aPos;
-            out vec2 vUv;
+            uniform mat4 uView;
+            uniform vec2 uLens;
+            out vec3 vRay;
             void main() {
-                vUv = aPos * 0.5 + 0.5;
+                vRay = transpose(mat3(uView)) * vec3(aPos * uLens, -1.0);
                 gl_Position = vec4(aPos, 0.9999, 1.0);
             }
         """
 
         private const val SKY_FRAG = """#version 300 es
             precision highp float;
-            in vec2 vUv;
+            in vec3 vRay;
             uniform vec3 uTopColor;
             uniform vec3 uHorizonColor;
             uniform vec3 uSunDir;
             uniform float uNightFactor;
             uniform float uTime;
+            uniform float uRelief;
             out vec4 fragColor;
 
             float hash(vec2 p) {
@@ -276,40 +285,31 @@ class ShaderLibrary {
             }
 
             void main() {
-                float grad = clamp((vUv.y - 0.34) * 1.60, 0.0, 1.0);
-                vec3 col = mix(uHorizonColor, uTopColor, pow(grad, 0.68));
-
-                // Atmospheric Rayleigh horizon band glow
-                float horizonBand = exp(-abs(vUv.y - 0.44) * 9.5);
-                col += uHorizonColor * horizonBand * 0.24;
-
-                // Warm sun disc + Mie scattering halo, or luminous moon at night
-                vec2 sunScreen = vec2(0.5 + uSunDir.x * 0.30, 0.46 + uSunDir.y * 0.44);
-                float dSun = length(vUv - sunScreen);
-                float sunHalo = exp(-dSun * 7.5) * (1.0 - uNightFactor * 0.55);
-                float sunCore = smoothstep(0.040, 0.018, dSun);
-                vec3 discColor = mix(vec3(1.0, 0.90, 0.68), vec3(0.86, 0.92, 1.0), uNightFactor);
-                col += discColor * (sunHalo * 0.52 + sunCore * 1.05);
-
-                // Soft drifting procedural Yemeni highland clouds
-                if (vUv.y > 0.46) {
-                    vec2 cloudUv = vec2(vUv.x * 5.2 + uTime * 0.012, vUv.y * 3.8);
-                    float n = noise(cloudUv) * 0.6 + noise(cloudUv * 2.3) * 0.4;
-                    float cloudMask = smoothstep(0.56, 0.84, n) * smoothstep(0.46, 0.62, vUv.y) * smoothstep(0.98, 0.72, vUv.y);
-                    vec3 cloudCol = mix(vec3(0.98, 0.96, 0.92), vec3(0.16, 0.20, 0.32), uNightFactor);
-                    col = mix(col, cloudCol, cloudMask * 0.42);
-                }
-
-                // Crisp twinkling stars across Yemen night sky
-                if (uNightFactor > 0.22 && vUv.y > 0.48) {
-                    vec2 cell = floor(vUv * vec2(170.0, 95.0));
-                    float h = hash(cell);
-                    if (h > 0.984) {
-                        float twinkle = 0.65 + 0.35 * sin(uTime * 2.6 + h * 120.0);
-                        col += vec3(0.94, 0.97, 1.0) * (uNightFactor * 0.95 * twinkle);
+                vec3 ray = normalize(vRay);
+                float elevation = ray.y;
+                vec3 col = mix(uHorizonColor, uTopColor, pow(clamp(elevation,0.0,1.0),0.62));
+                float sun = max(dot(ray, normalize(uSunDir)), 0.0);
+                vec3 disc = mix(vec3(1.0,.87,.63),vec3(.76,.84,.96),uNightFactor);
+                col += disc*(.35*pow(sun,24.0)+.9*smoothstep(.99975,.99995,sun));
+                if (elevation > .025) {
+                    vec2 plane = ray.xz / (.23 + elevation);
+                    vec2 uv = plane * 1.8 + vec2(.009*uTime,.002*uTime);
+                    float n = .56*noise(uv)+.29*noise(uv*2.1)+.15*noise(uv*4.4);
+                    float cloud = smoothstep(.50,.77,n)*smoothstep(.025,.18,elevation);
+                    col = mix(col,mix(vec3(.91,.89,.84),vec3(.14,.18,.26),uNightFactor),cloud*.66);
+                    if (uNightFactor>.25) {
+                        vec2 st = plane*148.0;
+                        float star=step(.986,hash(floor(st)))*(1.0-smoothstep(.04,.30,length(fract(st)-.5)));
+                        col += vec3(star*uNightFactor*(1.0-cloud)*.72);
                     }
                 }
-
+                float a = atan(ray.z,ray.x);
+                float farRidge = uRelief*(.65+.27*sin(3.0*a)+.18*cos(9.0*a)+.07*sin(23.0*a));
+                float nearRidge = uRelief*(.38+.22*cos(4.0*a)+.13*sin(11.0*a)+.05*cos(31.0*a));
+                vec3 haze = mix(uHorizonColor,vec3(.12,.15,.21),.33);
+                col = mix(col,haze,1.0-smoothstep(farRidge-.002,farRidge+.002,elevation));
+                vec3 rock = mix(uHorizonColor,vec3(.16,.16,.18)*(1.0-.64*uNightFactor),.59);
+                col = mix(col,rock,1.0-smoothstep(nearRidge-.001,nearRidge+.001,elevation));
                 fragColor = vec4(col, 1.0);
             }
         """

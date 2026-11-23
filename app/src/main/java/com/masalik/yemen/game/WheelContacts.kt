@@ -48,7 +48,7 @@ class WheelSuspension {
                 SurfaceType.MUD, SurfaceType.ROCK -> .048f
                 else -> .024f
             }
-            return road.y - center.y + TaizDriveway.height(d,l) +
+            return road.y - center.y + TaizDriveway.height(d,l) + QuayHumps.height(d, l, road.widthM * .5f) +
                 rough * (.65f * sin(d * 1.85f + l) + .35f * sin(d * 3.72f - 2f * l))
         }
         contacts = WheelContacts(contact(1,-1),contact(1,1),contact(-1,-1),contact(-1,1))

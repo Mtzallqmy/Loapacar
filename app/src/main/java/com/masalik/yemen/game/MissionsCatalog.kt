@@ -217,6 +217,6 @@ object MissionsCatalog {
                 timeOfDayPreset = if (i == 3) TimeOfDayPreset.SUNSET else TimeOfDayPreset.MORNING
             ))
         }
-        return list
+        return list + YemenJourneys.all.map { it.mission }
     }
 }

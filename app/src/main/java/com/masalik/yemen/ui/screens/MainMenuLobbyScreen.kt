@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -70,6 +71,7 @@ fun MainMenuLobbyScreen(
     saveState: SaveGameSchema,
     activeTimePhase: TimeOfDayPreset,
     onStartDriving: () -> Unit,
+    onJourney: (com.masalik.yemen.game.MissionDefinition) -> Unit,
     onParkingLesson: () -> Unit,
     onCycleDayNight: () -> Unit,
     onOpenWorldMap: () -> Unit,
@@ -90,7 +92,7 @@ fun MainMenuLobbyScreen(
         else -> Icons.Default.WbSunny
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(
@@ -105,6 +107,7 @@ fun MainMenuLobbyScreen(
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(horizontal = 18.dp, vertical = 12.dp)
     ) {
+        val split = maxWidth >= 650.dp
         // Top Status Bar
         Row(
             modifier = Modifier
@@ -200,11 +203,17 @@ fun MainMenuLobbyScreen(
             }
         }
 
+        if (split && saveState.missionRun == null) {
+            JourneySelector(onJourney, Modifier.align(Alignment.CenterEnd)
+                .width((maxWidth * .38f).coerceAtMost(290.dp)).padding(top=45.dp,bottom=22.dp)
+                .verticalScroll(rememberScrollState()))
+        }
+
         // Right-aligned (RTL Start) Editorial Menu Panel leaving the 3D Showroom open on the left
         Column(
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .widthIn(max = 395.dp)
+                .widthIn(max = if (split) 350.dp else 395.dp)
                 .fillMaxHeight()
                 .padding(top = 42.dp, bottom = 22.dp)
                 .verticalScroll(rememberScrollState()),
@@ -274,12 +283,16 @@ fun MainMenuLobbyScreen(
             ) {
                 Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("انطلق للقيادة الآن", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                Text(if (saveState.missionRun != null) "تابع رحلتك" else "قيادة حرة", fontWeight = FontWeight.Black, fontSize = 15.sp)
             }
 
             Spacer(Modifier.height(8.dp))
 
             if (saveState.missionRun == null) {
+                if (!split) {
+                    JourneySelector(onJourney, Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                }
                 Button(onClick = onParkingLesson, modifier = Modifier.fillMaxWidth().testTag("parking_lesson_button")) {
                     Text("تدريب الاصطفاف في سوق تعز")
                 }
@@ -298,7 +311,7 @@ fun MainMenuLobbyScreen(
                 )
                 LobbyNavCard(
                     title = "القصة والمهمات",
-                    subtitle = "$completedMissions/71 مهمة · 5 فصول",
+                    subtitle = "$completedMissions/${MissionsCatalog.ALL_OFFLINE_MISSIONS.size} مهمة · 5 فصول",
                     icon = Icons.Default.Flag,
                     accent = MasalikAmber,
                     tag = "lobby_missions_button",

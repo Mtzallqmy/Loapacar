@@ -4,6 +4,8 @@ import android.graphics.Color
 import android.opengl.GLES30
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
+import com.masalik.yemen.game.YemenJourneys
+import com.masalik.yemen.game.QuayHumps
 import com.masalik.yemen.game.AtmosphereSnapshot
 import com.masalik.yemen.game.BullbarStyle
 import com.masalik.yemen.game.CameraMode
@@ -79,6 +81,10 @@ class MasalikGLRenderer(
     private lateinit var textures: ProceduralTextures
     private lateinit var roundedMesh: GpuMesh
     private lateinit var humanMesh: GpuMesh
+    private lateinit var gateMeshes: Map<JourneyScenery.Finish, GpuMesh>
+    private lateinit var coffeeMeshes: Map<JourneyScenery.Finish, GpuMesh>
+    private lateinit var boatMeshes: Map<JourneyScenery.Finish, GpuMesh>
+    private lateinit var humpMesh: GpuMesh
     private lateinit var cubeMesh: GpuMesh
     private lateinit var slopedBodyMesh: GpuMesh
     private lateinit var utilityCabinMesh: GpuMesh
@@ -126,6 +132,10 @@ class MasalikGLRenderer(
 
         shaders = ShaderLibrary()
         bodies.clear()
+        gateMeshes = JourneyScenery.gate(RoadSplineNetwork.sampleAt(YemenJourneys.GATE_M).widthM).mapValues { GpuMesh(it.value) }
+        coffeeMeshes = JourneyScenery.coffeeTerrace().mapValues { GpuMesh(it.value) }
+        boatMeshes = JourneyScenery.dhow().mapValues { GpuMesh(it.value) }
+        humpMesh = GpuMesh(JourneyScenery.quayHump(RoadSplineNetwork.sampleAt(QuayHumps.centers.first()).widthM))
         textures = ProceduralTextures(assets)
         roundedMesh = GpuMesh(VisualMeshData.roundedBox())
         humanMesh = GpuMesh(VisualMeshData.ellipsoid())
@@ -200,7 +210,6 @@ class MasalikGLRenderer(
         if (showLiveMirror && fxEngine.beginRearMirrorPass()) {
             GLES30.glClearColor(atmo.skyR, atmo.skyG, atmo.skyB, 1f)
             GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
-            drawSkyBackdrop(atmo)
 
             val fwdX = sin(t.headingRad); val fwdZ = cos(t.headingRad)
             val mEyeX = t.posX - fwdX * 0.45f
@@ -219,7 +228,6 @@ class MasalikGLRenderer(
         GLES30.glClearColor(atmo.skyR, atmo.skyG, atmo.skyB, 1f)
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
 
-        drawSkyBackdrop(atmo)
 
         val speedFovBoost = (t.speedKmh / 140f).coerceIn(0f, 1f) * 13f
         val fov = when {
@@ -252,6 +260,7 @@ class MasalikGLRenderer(
         isMirrorPass: Boolean
     ) {
         val t = snap.telemetry
+        drawSkyBackdrop(atmo, t.regionId)
         GLES30.glUseProgram(shaders.worldProgram)
         GLES30.glUniform3f(shaders.uSunDir, atmo.sunDirX, atmo.sunDirY, atmo.sunDirZ)
         GLES30.glUniform3f(shaders.uSunColor, atmo.sunR, atmo.sunG, atmo.sunB)
@@ -331,7 +340,7 @@ class MasalikGLRenderer(
         }
     }
 
-    private fun drawSkyBackdrop(atmo: AtmosphereSnapshot) {
+    private fun drawSkyBackdrop(atmo: AtmosphereSnapshot, region: RegionId) {
         GLES30.glDepthMask(false)
         GLES30.glUseProgram(shaders.skyProgram)
         GLES30.glUniform3f(shaders.uSkyTopColor, atmo.skyR, atmo.skyG, atmo.skyB)
@@ -339,6 +348,15 @@ class MasalikGLRenderer(
         GLES30.glUniform3f(shaders.uSkySunDir, atmo.sunDirX, atmo.sunDirY, atmo.sunDirZ)
         GLES30.glUniform1f(shaders.uSkyNightFactor, atmo.nightFactor)
         GLES30.glUniform1f(shaders.uSkyTime, weatherAnimTime)
+        GLES30.glUniformMatrix4fv(shaders.uSkyView, 1, false, viewMatrix, 0)
+        GLES30.glUniform2f(shaders.uSkyLens, 1f / projMatrix[0], 1f / projMatrix[5])
+        val relief = when (region) {
+            RegionId.COASTAL_ROAD, RegionId.TIHAMA_PLAINS -> .035f
+            RegionId.MASALIK_DESERT, RegionId.SHIBAM_HADRAMOUT -> .085f
+            RegionId.NAQIL_SAHAB -> .32f
+            else -> .20f
+        }
+        GLES30.glUniform1f(shaders.uSkyRelief, relief)
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, skyVboId)
         GLES30.glEnableVertexAttribArray(0)
         GLES30.glVertexAttribPointer(0, 2, GLES30.GL_FLOAT, false, 0, 0)
@@ -735,6 +753,9 @@ class MasalikGLRenderer(
             } else if (sample.isUrbanStreet && !com.masalik.yemen.game.CityStreetNetwork.isJunction(d, 15f)) {
                 val isModern = sample.isModernBoulevard
                 for (side in intArrayOf(-1, 1)) {
+                    // Keep the working waterfront open to the sea.
+                    if (side > 0 && abs(d - YemenJourneys.HARBOUR_M) < 115f) continue
+                    if (abs(d - YemenJourneys.GATE_M) < 18f) continue
                     val bHash = hash + (if (side > 0) 37 else 11)
                     val profile = com.masalik.yemen.game.CityArchitectureCatalog.profile(sample.regionId)
                     val buildingW = profile.buildingWidthM + (bHash % 4)
@@ -1005,25 +1026,7 @@ class MasalikGLRenderer(
             dInt += 22
         }
 
-        // Iconic Bab al-Yemen Archway Landmark in Old Sana'a (15450m)
-        if (abs(15450f - centerDistM) < 230f) {
-            val s = RoadSplineNetwork.sampleAt(15450f)
-            for (side in intArrayOf(-1, 1)) {
-                val lat = side * (s.widthM * 0.5f + 3.2f)
-                drawOrientedBox(
-                    s.x + s.rightX * lat, s.y + 6.5f, s.z + s.rightZ * lat,
-                    s.headingRad, 4.8f, 13f, 5.2f, 0.90f, 0.76f, 0.60f,
-                    texId = textures.sanaaFacadeTex, uvScaleX = 1f, uvScaleY = 2f,
-                    emR = nightGlow * 0.24f, emG = nightGlow * 0.16f, emB = nightGlow * 0.05f
-                )
-            }
-            drawOrientedBox(
-                s.x, s.y + 9.2f, s.z, s.headingRad,
-                s.widthM + 6.8f, 3.4f, 4.4f, 0.92f, 0.82f, 0.68f,
-                texId = textures.sanaaFacadeTex, uvScaleX = 2f, uvScaleY = 0.7f,
-                emR = nightGlow * 0.24f, emG = nightGlow * 0.16f, emB = nightGlow * 0.05f
-            )
-        }
+        drawJourneyScenery(centerDistM)
 
         // Service Stations (Fuel Canopies, Workshops & Car Washes)
         for (poi in RoadSplineNetwork.WORLD_POIS) {
@@ -1120,6 +1123,40 @@ class MasalikGLRenderer(
                 }
                 if (atmo.nightFactor > 0.25f) drawOrientedBox(x, s.y + 2.48f, z, s.headingRad,
                     0.12f, 0.18f, 0.14f, 1f, 0.78f, 0.41f, emR = 0.9f, emG = 0.55f, emB = 0.18f)
+            }
+        }
+    }
+
+    private fun drawJourneyScenery(center: Float) {
+        fun model(meshes: Map<JourneyScenery.Finish, GpuMesh>, s: RoadSample, lane: Float,
+                  y: Float, angle: Float = 0f, roll: Float = 0f, scale: Float = 1f) {
+            for ((m, mesh) in meshes) drawOrientedMesh(mesh, s.x + s.rightX * lane, y,
+                s.z + s.rightZ * lane, s.headingRad + angle, 0f, roll, scale, scale, scale,
+                m.r, m.g, m.b, roughness = .86f)
+        }
+        if (abs(center - YemenJourneys.GATE_M) < 290f) {
+            val s = RoadSplineNetwork.sampleAt(YemenJourneys.GATE_M)
+            model(gateMeshes, s, 0f, s.y)
+        }
+        if (abs(center - YemenJourneys.FARM_M) < 245f) {
+            for (i in -2..2) {
+                val s = RoadSplineNetwork.sampleAt(YemenJourneys.FARM_M + i * 32f)
+                val lane = -(s.widthM * .5f + 10f)
+                val base = RoadSplineNetwork.terrainHeightAt(s.x+s.rightX*lane, s.z+s.rightZ*lane, s, lane)
+                model(coffeeMeshes, s, lane, base)
+            }
+        }
+        if (abs(center - YemenJourneys.HARBOUR_M) < 240f) {
+            for (i in -1..2) {
+                val s = RoadSplineNetwork.sampleAt(YemenJourneys.HARBOUR_M + i * 24f)
+                val phase = weatherAnimTime * .85f + i * 2.1f
+                model(boatMeshes, s, 58f + 5f*i, s.y - 2.4f + .12f*sin(phase),
+                    .28f*i, 2.8f*sin(phase), 1.05f + .09f*i)
+            }
+            for (d in QuayHumps.centers) {
+                val s = RoadSplineNetwork.sampleAt(d)
+                drawOrientedMesh(humpMesh,s.x,s.y+.036f,s.z,s.headingRad,
+                    -kotlin.math.atan(s.gradePct/100f)*180f/PI.toFloat(),0f,1f,1f,1f,.80f,.59f,.24f)
             }
         }
     }
