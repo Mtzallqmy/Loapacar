@@ -122,6 +122,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     private var run: MissionRun? = null
     private val autoDriver = AutoDriver()
     private var autoDriveStatus: AutoDriveStatus? = null
+    private var autoDriveHoldSec = 0f
     private var fixedRemainder = 0.0
     private var lastTelemetry = physics.telemetry()
     private var previousTelemetry = lastTelemetry
@@ -397,12 +398,24 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
                 livingWorld.update(tick.toFloat(), physics.distanceAlongRoadM, physics.lateralOffsetM, physics.forwardSpeedMs, atmo.nightFactor, physics.weather)
                 physics.jobPayloadKg = run?.payloadKg ?: 0f
                 previousTelemetry = lastTelemetry
-                val automated = if (autoDriveStatus != null)
-                    autoDriver.step(physics, livingWorld, state.autoDriveStyle) else null
+                val automated = when {
+                    autoDriveStatus == null -> null
+                    autoDriveHoldSec > 0f -> {
+                        autoDriveHoldSec -= tick.toFloat()
+                        com.masalik.yemen.game.AutoDriveCommand(ControlInputs(brake = .85f), AutoDriveStatus.HOLDING)
+                    }
+                    else -> autoDriver.step(physics, livingWorld, state.autoDriveStyle)
+                }
                 if (automated != null) autoDriveStatus = automated.status
                 lastTelemetry = physics.step(tick.toFloat(), automated?.pedals ?: manualInputs, livingWorld)
-                if (automated != null && (!physics.engineRunning || physics.lastCollisionImpulse > 2f)) {
-                    stopAutoDrive()
+                if (automated != null) {
+                    if (!physics.engineRunning || physics.lastCollisionImpulse > 7f ||
+                        kotlin.math.abs(physics.headingOffsetFromRoadRad) > .90f) {
+                        stopAutoDrive()
+                        _uiState.update { it.copy(toastMessageAr = "توقّف السائق الآلي · تولَّ القيادة") }
+                    } else if (physics.lastCollisionImpulse > 2f) {
+                        autoDriveHoldSec = 1.25f
+                    }
                 }
                 val journey = run
                 val oldStage = journey?.stage
@@ -935,6 +948,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     private fun stopAutoDrive() {
         if (autoDriveStatus == null) return
         autoDriveStatus = null
+        autoDriveHoldSec = 0f
         _uiState.update { it.copy(autoDriveStatus = null) }
     }
 

@@ -15,6 +15,7 @@ enum class AutoDriveStyle(val labelAr: String, val townKmh: Float, val openKmh: 
 enum class AutoDriveStatus(val labelAr: String) {
     CRUISING("يتبع المسار"),
     FOLLOWING("يراعي المركبة الأمامية"),
+    HOLDING("يثبّت السيارة"),
     WAITING("ينتظر عند الإشارة أو المعبر"),
     ARRIVING("نهاية الطريق")
 }
@@ -25,13 +26,16 @@ internal class AutoDriver {
     fun canEngage(car: VehiclePhysicsEngine): Boolean {
         val sample = RoadSplineNetwork.sampleAt(car.distanceAlongRoadM)
         return car.engineRunning && car.transmissionMode == "auto" &&
-            car.autoShifter == AutomaticShifterState.D && car.forwardSpeedMs >= -.15f &&
+            car.autoShifter == AutomaticShifterState.D && car.forwardSpeedMs >= -3.5f &&
             abs(car.lateralOffsetM) < sample.widthM * .5f - .8f &&
             car.lateralOffsetM > .25f && abs(car.headingOffsetFromRoadRad) < .75f &&
             car.distanceAlongRoadM < RoadSplineNetwork.TOTAL_ROAD_LENGTH_M - 29f
     }
 
     fun step(car: VehiclePhysicsEngine, world: LivingWorldSimulation, style: AutoDriveStyle): AutoDriveCommand {
+        if (car.forwardSpeedMs < -.08f) {
+            return AutoDriveCommand(ControlInputs(brake = .85f), AutoDriveStatus.HOLDING)
+        }
         val distance = car.distanceAlongRoadM
         val sample = RoadSplineNetwork.sampleAt(distance)
         val speed = car.forwardSpeedMs.coerceAtLeast(0f)

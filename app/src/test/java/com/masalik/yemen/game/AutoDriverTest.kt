@@ -43,6 +43,17 @@ class AutoDriverTest {
         assertTrue("lane deviation $maxOffsetError",maxOffsetError < 1.15f)
     }
 
+    @Test fun brakesBeforeTakingOverWhenTheCarRollsBackOnAnIncline() {
+        car.resetToRoad(1450f, 2.65f)
+        repeat(60) { car.step(1f / 60f, ControlInputs(), null) }
+        assertTrue(car.forwardSpeedMs < -.08f)
+        assertTrue(driver.canEngage(car))
+        val command = driver.step(car, world, AutoDriveStyle.MOUNTAIN)
+        assertEquals(AutoDriveStatus.HOLDING, command.status)
+        assertEquals(0f, command.pedals.throttle, 0f)
+        assertTrue(command.pedals.brake >= .8f)
+    }
+
     @Test fun holdsPositionBeforeEndBoundary() {
         car.resetToRoad(RoadSplineNetwork.TOTAL_ROAD_LENGTH_M - 27f,2.65f)
         val command = driver.step(car,world,AutoDriveStyle.TOURING)

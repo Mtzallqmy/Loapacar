@@ -39,6 +39,20 @@ def capture(name):
 try:
     adb("shell","wm","size","720x1280")
     adb("shell","wm","density","160")
+    adb("shell","pm","clear",package)
+    adb("shell","am","start","-W","-n",package+"/com.masalik.yemen.MainActivity")
+    find_label("قيادة حرة",click=True)
+    find_label("تشغيل السائق الآلي",click=True)
+    try:
+        find_label("إيقاف السائق الآلي")
+    except RuntimeError:
+        capture("auto-driver-failed")
+        print(adb("shell","cat","/sdcard/journey-ui.xml").decode(),flush=True)
+        raise
+    capture("auto-driver")
+    find_label("إيقاف السائق الآلي",click=True)
+    find_label("تشغيل السائق الآلي")
+    print("Activated and released the automatic driver from the driving HUD",flush=True)
     for slug, place, objective in [
         ("taiz-market","تعز","مخزن البن · ادخل الشارع الشرقي الموازي وحمّل الأكياس"),
         ("taiz-main","تعز","مخزن البن · ادخل الشارع الشرقي الموازي وحمّل الأكياس"),
@@ -59,15 +73,6 @@ try:
         find_label(objective)
         capture(slug)
         print(f"Opened {slug} from lobby and observed its first objective",flush=True)
-    adb("shell","pm","clear",package)
-    adb("shell","am","start","-W","-n",package+"/com.masalik.yemen.MainActivity")
-    find_label("قيادة حرة",click=True)
-    find_label("تشغيل السائق الآلي",click=True)
-    find_label("إيقاف السائق الآلي")
-    capture("auto-driver")
-    find_label("إيقاف السائق الآلي",click=True)
-    find_label("تشغيل السائق الآلي")
-    print("Activated and released the automatic driver from the driving HUD",flush=True)
 finally:
     logs=adb("logcat","-d","MasalikShader:E","AndroidRuntime:E","*:S")
     (out/"android.log").write_bytes(logs)
