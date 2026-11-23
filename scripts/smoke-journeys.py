@@ -1,4 +1,4 @@
-"""Exercise the three lobby routes via Android accessibility and capture their first frames."""
+"""Exercise the lobby routes and driving controls through Android accessibility."""
 import re
 import subprocess
 import sys
@@ -40,6 +40,8 @@ try:
     adb("shell","wm","size","720x1280")
     adb("shell","wm","density","160")
     for slug, place, objective in [
+        ("taiz-market","تعز","مخزن البن · ادخل الشارع الشرقي الموازي وحمّل الأكياس"),
+        ("taiz-main","تعز","مخزن البن · ادخل الشارع الشرقي الموازي وحمّل الأكياس"),
         ("ibb","إب","عند المدرجات · ثبّت السيارة وحمّل أكياس البن"),
         ("sanaa","صنعاء","توقّف في الشارع الشرقي الموازي لصعود الركاب"),
         ("aden","عدن","تابع السير بمحاذاة البحر")
@@ -48,12 +50,24 @@ try:
         adb("shell","pm","clear",package)
         adb("shell","am","start","-W","-n",package+"/com.masalik.yemen.MainActivity")
         find_label(place,click=True)
+        if slug == "taiz-main":
+            find_label("الشارع الرئيسي",click=True)
+            find_label("حمولة صبر · الطريق الرئيسي")
         find_label("انطلق في الرحلة")
         capture("menu-"+slug)
         find_label("انطلق في الرحلة",click=True)
         find_label(objective)
         capture(slug)
         print(f"Opened {slug} from lobby and observed its first objective",flush=True)
+    adb("shell","pm","clear",package)
+    adb("shell","am","start","-W","-n",package+"/com.masalik.yemen.MainActivity")
+    find_label("قيادة حرة",click=True)
+    find_label("تشغيل السائق الآلي",click=True)
+    find_label("إيقاف السائق الآلي")
+    capture("auto-driver")
+    find_label("إيقاف السائق الآلي",click=True)
+    find_label("تشغيل السائق الآلي")
+    print("Activated and released the automatic driver from the driving HUD",flush=True)
 finally:
     logs=adb("logcat","-d","MasalikShader:E","AndroidRuntime:E","*:S")
     (out/"android.log").write_bytes(logs)

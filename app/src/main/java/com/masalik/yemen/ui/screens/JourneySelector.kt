@@ -26,9 +26,16 @@ import com.masalik.yemen.ui.theme.*
 @Composable
 internal fun JourneySelector(onStart: (MissionDefinition) -> Unit, modifier: Modifier = Modifier) {
     var selected by rememberSaveable { mutableIntStateOf(0) }
-    val journey = YemenJourneys.all[selected]
+    val entries = YemenJourneys.all.filterNot { it == YemenJourneys.taizRoutes.last() }
+    var mainRoad by rememberSaveable { mutableStateOf(false) }
+    val journey = if (selected == 0 && mainRoad) YemenJourneys.taizRoutes.last() else entries[selected]
     val m = journey.mission
-    val accent = when (selected) { 0 -> Color(0xFFA4D49C); 1 -> Color(0xFFF0BB85); else -> Color(0xFF92DADD) }
+    val accent = when (selected) {
+        0 -> Color(0xFFE8B88B)
+        1 -> Color(0xFFA4D49C)
+        2 -> Color(0xFFF0BB85)
+        else -> Color(0xFF92DADD)
+    }
     val elevations = remember(m.id) {
         List(72) { i -> RoadSplineNetwork.sampleAt(m.startDistanceM + (m.finishDistanceM-m.startDistanceM)*i/71f).y }
     }
@@ -36,12 +43,24 @@ internal fun JourneySelector(onStart: (MissionDefinition) -> Unit, modifier: Mod
         verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Text("رحلات اليمن", color = MasalikIvory, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         Row(Modifier.fillMaxWidth().selectableGroup(),horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            YemenJourneys.all.forEachIndexed { i, entry ->
+            entries.forEachIndexed { i, entry ->
                 Box(Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
                     .background(if (selected==i) accent else Color.White.copy(alpha=.08f))
                     .selectable(selected==i, role=Role.Tab) { selected=i }
                     .padding(vertical=7.dp), contentAlignment=androidx.compose.ui.Alignment.Center) {
-                    Text(entry.place, color=if (selected==i) Color(0xFF10201A) else MasalikIvory, fontSize=12.sp)
+                    Text(if (i == 0) "تعز" else entry.place, color=if (selected==i) Color(0xFF10201A) else MasalikIvory, fontSize=12.sp)
+                }
+            }
+        }
+        if (selected == 0) Row(Modifier.fillMaxWidth().selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (useMainRoad in listOf(false, true)) {
+                val active = mainRoad == useMainRoad
+                Box(Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
+                    .background(if (active) accent.copy(alpha = .22f) else Color.White.copy(alpha = .07f))
+                    .selectable(active, role = Role.Tab) { mainRoad = useMainRoad }
+                    .padding(6.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                    Text(if (useMainRoad) "الشارع الرئيسي" else "شارع السوق", color = MasalikIvory, fontSize = 11.sp)
                 }
             }
         }

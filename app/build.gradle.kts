@@ -17,8 +17,8 @@ android {
         applicationId = "com.masalik.yemen"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "3.2.0"
+        versionCode = 8
+        versionName = "3.3.0"
     }
 
     signingConfigs {
@@ -53,8 +53,8 @@ android {
         }
         create("journeys") {
             initWith(getByName("preview"))
-            applicationIdSuffix = ".journeys"
-            versionNameSuffix = "-journeys"
+            applicationIdSuffix = ".sabir"
+            versionNameSuffix = "-sabir-preview"
             ndk { abiFilters += "arm64-v8a" }
         }
         debug {

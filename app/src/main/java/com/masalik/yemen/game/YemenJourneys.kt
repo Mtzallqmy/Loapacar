@@ -11,6 +11,9 @@ object YemenJourneys {
     const val GATE_M = 15450f
     const val HARBOUR_M = 21640f
     const val FARM_M = 2870f
+    const val TAIZ_MARKET_M = 221f
+    const val SABIR_LOOKOUT_M = 2350f
+    private const val MARKET_LANE = CityStreetNetwork.SIDE_STREET_OFFSET_M
 
     private fun trip(id: String, place: String, title: String, description: String, start: Float,
                      vehicle: VehicleId, mode: GameModeCategory, time: TimeOfDayPreset,
@@ -24,7 +27,25 @@ object YemenJourneys {
         return YemenJourney(place, mission, stops.toList())
     }
 
-    val all = listOf(
+    private fun sabirTrip(marketStreet: Boolean): YemenJourney {
+        val route = if (marketStreet)
+            RoadObjective(335f, MARKET_LANE, ObjectiveKind.GATE, "تابع عبر سوق البن ثم اخرج يسارًا عند آخر التقاطع")
+        else RoadObjective(315f, 2.85f, ObjectiveKind.GATE, "اخرج من السوق عند التقاطع الأول واتبع الشارع الرئيسي")
+        return trip(
+            if (marketStreet) "journey_taiz_market" else "journey_taiz_main",
+            if (marketStreet) "سوق تعز" else "صعود صبر",
+            if (marketStreet) "بنّ السوق إلى مطلّ صبر" else "حمولة صبر · الطريق الرئيسي",
+            if (marketStreet) "مرّ بالشارع الضيّق أمام الدكاكين بعد التحميل، ثم اصعد إلى المطلّ."
+                else "اخرج عند أول تقاطع إلى الشارع الأوسع، ثم اصعد إلى المطلّ بالحمولة.",
+            110f, VehicleId.SAQR, GameModeCategory.CARGO, TimeOfDayPreset.MORNING, WeatherPreset.CLOUDY,
+            RoadObjective(TAIZ_MARKET_M, MARKET_LANE, ObjectiveKind.LOAD, "مخزن البن · ادخل الشارع الشرقي الموازي وحمّل الأكياس"),
+            route,
+            RoadObjective(1380f, 2.85f, ObjectiveKind.GATE, "تابع صعود المنحدر إلى مطلّ جبل صبر"),
+            RoadObjective(SABIR_LOOKOUT_M, 2.85f, ObjectiveKind.UNLOAD, "مطلّ صبر · ثبّت السيارة وسلّم أكياس البن")
+        )
+    }
+
+    private val otherCities = listOf(
         trip("journey_ibb_harvest", "إب", "صباح القطاف",
             "حمّل أكياس البن عند المدرجات، ثم سلّمها في الشارع الموازي لسوق إب تحت المطر.",
             2790f, VehicleId.SAQR, GameModeCategory.CARGO, TimeOfDayPreset.MORNING, WeatherPreset.LIGHT_RAIN,
@@ -44,6 +65,8 @@ object YemenJourneys {
             RoadObjective(21590f, 2.85f, ObjectiveKind.GATE, "اقترب من الرصيف على مهل"),
             RoadObjective(HARBOUR_M, 2.85f, ObjectiveKind.PARK, "اصطف عند المراكب وثبّت المكابح لثانيتين"))
     )
+    val taizRoutes = listOf(sabirTrip(true), sabirTrip(false))
+    val all = taizRoutes + otherCities
     val byId = all.associateBy { it.mission.id }
 }
 

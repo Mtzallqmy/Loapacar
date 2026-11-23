@@ -34,6 +34,17 @@ class YemenJourneyTest {
         }
     }
 
+    @Test fun sabirRoutesRequireDifferentStreetsAndClimbToTheSameLookout() {
+        val market = YemenJourneys.taizRoutes.first()
+        val main = YemenJourneys.taizRoutes.last()
+        assertEquals(market.stops.first(), main.stops.first())
+        assertEquals(market.stops.last(), main.stops.last())
+        assertTrue(abs(market.stops[1].lane-main.stops[1].lane) > 25f)
+        val base = RoadSplineNetwork.sampleAt(YemenJourneys.TAIZ_MARKET_M)
+        val peak = RoadSplineNetwork.sampleAt(YemenJourneys.SABIR_LOOKOUT_M)
+        assertTrue(peak.y - base.y > 100f)
+    }
+
     @Test fun quayMeshMatchesTheHeightSampledByTheWheels() {
         val width=RoadSplineNetwork.sampleAt(QuayHumps.centers.first()).widthM
         val mesh=JourneyScenery.quayHump(width)
@@ -46,7 +57,8 @@ class YemenJourneyTest {
     }
 
     @Test fun sceneryContainsFiniteTrianglesWithUnitNormals() {
-        for (model in listOf(JourneyScenery.gate(12f), JourneyScenery.coffeeTerrace(), JourneyScenery.dhow())) {
+        for (model in listOf(JourneyScenery.gate(12f), JourneyScenery.coffeeTerrace(), JourneyScenery.dhow(),
+            JourneyScenery.taizMarket(), JourneyScenery.sabirLookout(), JourneyScenery.taizHillFort())) {
             for (mesh in model.values) {
                 assertEquals(0,mesh.size%24)
                 assertTrue(mesh.all { it.isFinite() })

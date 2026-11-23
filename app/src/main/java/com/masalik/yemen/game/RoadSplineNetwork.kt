@@ -371,7 +371,11 @@ object RoadSplineNetwork {
                 d < 20800f -> 50f - ((d - 19600f) / 1200f) * 38f
                 else -> 12f - ((d - 20800f) / 1200f) * 6f
             }
-            ys[i] = y
+            // The climb rises progressively from the city and blends back into the Ibb approach.
+            val climb = ((d - 430f) / 1920f).coerceIn(0f, 1f)
+            val exit = ((d - 2350f) / 1390f).coerceIn(0f, 1f)
+            val elevation = 102f * climb * climb * (3f - 2f * climb) * (1f - exit * exit * (3f - 2f * exit))
+            ys[i] = y + elevation
         }
 
         return Array(count) { i ->

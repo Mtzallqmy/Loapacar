@@ -224,6 +224,10 @@ class MasalikAudioEngine(private val assets: android.content.res.AssetManager) {
         var popCooldown = 0
         var popBurstEnv = 0f
         var rainFilter = 0f
+        var lowRoadNoise = 0f
+        var looseStone = 0f
+        var filteredLoad = .45f
+        var filteredEngineFreq = 40.0
 
         val invSr = 1.0 / sampleRate
         val twoPi = 2.0 * PI
@@ -254,6 +258,13 @@ class MasalikAudioEngine(private val assets: android.content.res.AssetManager) {
             val voice = com.masalik.yemen.game.EngineVoiceCatalog.voice(vehicleId)
             val rpmRatio = (engineRpm / 6000f).coerceIn(0.12f, 1.35f)
             val engFreq = (engineBaseFreqHz * (0.72f + rpmRatio * 2.45f)).toDouble()
+            val isDiesel = vehicleId in listOf(com.masalik.yemen.game.VehicleId.SAQR,
+                com.masalik.yemen.game.VehicleId.NIMR, com.masalik.yemen.game.VehicleId.JABAL,
+                com.masalik.yemen.game.VehicleId.HAFILAT, com.masalik.yemen.game.VehicleId.QAFILA)
+            val loadTarget = .38f + throttle * .62f
+            val tireSurface = surface
+            val rollingSpeed = (speedKmh / 90f).coerceIn(0f, 1f)
+            val wetTires = weather == WeatherPreset.HEAVY_RAIN || weather == WeatherPreset.LIGHT_RAIN
             val turboFreq = (1750.0 + turboBoostPsi * 115.0).coerceIn(1600.0, 3900.0)
             val turboGain = ((turboBoostPsi - 2.5f) / 16f).coerceIn(0f, 1f) * engVol * 0.24f
             val screechGain = tireScreech.coerceIn(0f, 1f) * sfxVol * 0.42f
@@ -281,11 +292,12 @@ class MasalikAudioEngine(private val assets: android.content.res.AssetManager) {
 
                 // 1. Procedural Engine (Harmonics + Turbo Spool Whistle + Exhaust Backfire Pops!)
                 if (engVol > 0.001f) {
-                    engPhase += twoPi * engFreq * invSr
-                    engPhase2 += twoPi * (engFreq * 2.0) * invSr
+                    filteredEngineFreq += (engFreq - filteredEngineFreq) * .003
+                    filteredLoad += (loadTarget - filteredLoad) * .0017f
+                    engPhase += twoPi * filteredEngineFreq * invSr
+                    engPhase2 += twoPi * (filteredEngineFreq * 2.0) * invSr
                     if (engPhase > twoPi) engPhase -= twoPi
                     if (engPhase2 > twoPi) engPhase2 -= twoPi
-                    val load = 0.54f + throttle * 0.46f
                     val engWave = (sin(engPhase) * voice.fundamental + sin(engPhase2) * voice.second +
                         sin(engPhase * 3.0) * voice.third + sin(engPhase * 4.0) * voice.fourth +
                         (rng.nextFloat() * 2f - 1f) * voice.roughness * (1f - rpmRatio.coerceAtMost(1f))).toFloat()
@@ -294,7 +306,10 @@ class MasalikAudioEngine(private val assets: android.content.res.AssetManager) {
                     val frac = recordedPhase - index
                     val engineLayer = (recorded[index] * (1f - frac) + recorded[next] * frac) / 32768f
                     recordedPhase = (recordedPhase + (.60f + rpmRatio * 2.2f) * (engineBaseFreqHz / 65f).coerceIn(.7f,1.35f)) % recorded.size
-                    mechSample += (engWave * .62f + engineLayer * 1.25f) * engVol * load
+                    val combustionPulse = if (isDiesel) .19f * sin(engPhase).toFloat().coerceAtLeast(0f) *
+                        (.24f + filteredLoad) * (1f + sin(engPhase * 5.0).toFloat() * .76f) else 0f
+                    val sampleGain = if (isDiesel) .46f else .74f
+                    mechSample += (engWave * .94f + engineLayer * sampleGain + combustionPulse) * engVol * filteredLoad
                     if (starterIndex < ignition.size) mechSample += ignition[starterIndex++] / 32768f * engVol
 
                     // High-frequency Turbo Spool Whistle
@@ -349,7 +364,18 @@ class MasalikAudioEngine(private val assets: android.content.res.AssetManager) {
                         (rng.nextFloat() * 2f - 1f) * 0.9f
                     } else 0f
                     val windGain = (speedKmh / 145f).coerceIn(0f, 1f) * 0.42f
-                    sample += (rawNoise * roadNoiseGain * 0.40f + rainFilter * (weatherNoiseGain * 0.65f + windGain) + rainDrop * 0.45f) * envVol
+                    lowRoadNoise += (rawNoise - lowRoadNoise) * .033f
+                    if (rng.nextFloat() < .014f * rollingSpeed) looseStone = rng.nextFloat() * .85f
+                    looseStone *= .944f
+                    val tread = when (tireSurface) {
+                        SurfaceType.GRAVEL, SurfaceType.ROCK -> .56f * lowRoadNoise + .49f * looseStone * rawNoise + .21f * rawNoise
+                        SurfaceType.DIRT -> .72f * lowRoadNoise + .21f * looseStone * rawNoise
+                        SurfaceType.MUD, SurfaceType.SAND -> .94f * lowRoadNoise + .08f * rawNoise
+                        SurfaceType.ASPHALT -> .26f * lowRoadNoise + .19f * rawNoise
+                    }
+                    val spray = if (wetTires) (rawNoise - rainFilter) * .13f * rollingSpeed else 0f
+                    sample += (tread * roadNoiseGain + spray +
+                        rainFilter * (weatherNoiseGain * .65f + windGain) + rainDrop * .45f) * envVol
                 }
 
                 // 4. Nearby Police / Ambulance Siren Wail (Doppler proximity modulated)

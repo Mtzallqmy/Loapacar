@@ -137,6 +137,75 @@ internal object JourneyScenery {
         }
     }.finish()
 
+    fun taizMarket(): Map<Finish, FloatArray> = Builder().apply {
+        for (bay in -2..2) {
+            val z=bay*5.1f
+            val height=6.7f+(abs(bay)%3)*1.45f
+            val wall=if (bay%2==0) Finish.STONE else Finish.EARTH
+            box(wall,2.1f,-.26f,z,4.0f,height,4.96f)
+            box(Finish.WOOD,.032f,.07f,z,.15f,2.45f,2.9f)
+            for (j in -2..2) box(Finish.EARTH,-.062f,.16f,z+j*.47f,.12f,2.25f,.32f)
+            for (course in 0..2) for (j in -2..2) {
+                if (abs(j)<2 && course<2) continue
+                box(if ((j+course+bay)%3==0) Finish.EARTH else Finish.LIME,
+                    -.04f,2.76f+course*.215f,z+j*.91f,.17f,.15f,.77f)
+            }
+            for (floor in 1..2) for (j in listOf(-1,1)) {
+                val sill=3.12f+floor*1.31f
+                box(Finish.LIME,.01f,sill-.12f,z+j*1.03f,.22f,.16f,.94f)
+                box(Finish.WOOD,-.055f,sill+.025f,z+j*1.03f,.16f,.86f,.62f)
+                box(Finish.TEAL,-.145f,sill+.13f,z+j*1.03f,.023f,.61f,.38f)
+            }
+            val roof=height-.27f
+            box(Finish.LIME,2.1f,roof,z,4.13f,.19f,5.03f)
+            for (j in -2..2) box(wall,.045f,roof+.19f,z+j*.86f,.33f,.35f,.56f)
+            val cloth=if (bay%2==0) Finish.TEAL else Finish.CANVAS
+            for (fold in 0..8) {
+                val a=z-1.96f+fold*.44f
+                val b=a+.45f
+                val dip=if (fold%2==0) .07f else 0f
+                quad(cloth,P(.09f,3.04f,a),P(.09f,3.04f,b),
+                    P(-1.8f,2.68f-dip,b),P(-1.8f,2.68f-dip,a))
+                quad(cloth,P(-1.8f,2.68f-dip,a),P(-1.8f,2.68f-dip,b),
+                    P(-1.8f,2.49f,b),P(-1.8f,2.49f,a))
+            }
+            for (side in listOf(-1,1)) box(Finish.WOOD,-1.76f,0f,z+side*1.88f,.075f,2.72f,.075f)
+            for (j in -2..2) {
+                val x=-.76f-(j%2)*.24f
+                ring(if (j%2==0) Finish.CANVAS else Finish.GOLD,x,0f,z+j*.64f,.24f,.33f,.20f,9)
+                ring(Finish.CANVAS,x,.20f,z+j*.64f,.33f,.25f,.43f,9)
+            }
+        }
+    }.finish()
+
+    fun sabirLookout(): Map<Finish, FloatArray> = Builder().apply {
+        box(Finish.STONE,3.8f,-2.9f,0f,10.6f,2.92f,23f)
+        box(Finish.LIME,3.8f,.02f,0f,10.6f,.16f,23f)
+        for (section in -5..5) {
+            val z=section*1.96f
+            box(Finish.STONE,8.8f,.14f,z,.67f,.78f,1.97f)
+            box(Finish.LIME,8.8f,.92f,z,.75f,.14f,1.97f)
+            box(Finish.STONE,8.8f,1.06f,z,.74f,.27f,.70f)
+        }
+        for (x in listOf(1.4f,5.6f)) for (z in listOf(-3.2f,3.2f)) {
+            box(Finish.STONE,x,.16f,z,.57f,3.64f,.6f)
+            box(Finish.LIME,x,3.66f,z,.76f,.23f,.77f)
+        }
+        for (beam in -4..4) box(Finish.WOOD,3.5f,3.82f,beam*.87f,5.4f,.16f,.13f)
+        for (wall in -3..3) box(Finish.TEAL,3.5f+wall*.71f,3.99f,0f,.38f,.14f,7.4f)
+        for (z in listOf(-6.8f,6.8f)) box(Finish.WOOD,6.7f,.42f,z,1.05f,.19f,2.26f)
+    }.finish()
+
+    fun taizHillFort(): Map<Finish, FloatArray> = Builder().apply {
+        box(Finish.STONE,0f,-5f,0f,27f,8f,44f)
+        box(Finish.EARTH,0f,3f,0f,25f,6.2f,43f)
+        box(Finish.STONE,1.4f,9.2f,-5f,17f,3f,24f)
+        for (x in listOf(-12.8f,12.8f)) {
+            for (z in listOf(-20f,20f)) ring(Finish.STONE,x,-2f,z,3.7f,3.05f,13.9f,12)
+            for (i in -6..6) box(Finish.LIME,x,9.2f, i*2.9f,.65f,.96f,1.42f)
+        }
+    }.finish()
+
     fun coffeeTerrace(): Map<Finish, FloatArray> = Builder().apply {
         for (row in 0..3) {
             val x=-row*4.2f; val h=row*1.4f

@@ -84,6 +84,9 @@ class MasalikGLRenderer(
     private lateinit var humanMesh: GpuMesh
     private lateinit var palmMeshes: Map<JourneyScenery.Finish, GpuMesh>
     private lateinit var hillTreeMeshes: Map<JourneyScenery.Finish, GpuMesh>
+    private lateinit var marketMeshes: Map<JourneyScenery.Finish, GpuMesh>
+    private lateinit var sabirMeshes: Map<JourneyScenery.Finish, GpuMesh>
+    private lateinit var fortMeshes: Map<JourneyScenery.Finish, GpuMesh>
     private lateinit var gateMeshes: Map<JourneyScenery.Finish, GpuMesh>
     private lateinit var coffeeMeshes: Map<JourneyScenery.Finish, GpuMesh>
     private lateinit var boatMeshes: Map<JourneyScenery.Finish, GpuMesh>
@@ -140,6 +143,9 @@ class MasalikGLRenderer(
         canopies.clear()
         palmMeshes = JourneyScenery.roadsideTree(true).mapValues { GpuMesh(it.value) }
         hillTreeMeshes = JourneyScenery.roadsideTree(false).mapValues { GpuMesh(it.value) }
+        marketMeshes = JourneyScenery.taizMarket().mapValues { GpuMesh(it.value) }
+        sabirMeshes = JourneyScenery.sabirLookout().mapValues { GpuMesh(it.value) }
+        fortMeshes = JourneyScenery.taizHillFort().mapValues { GpuMesh(it.value) }
         gateMeshes = JourneyScenery.gate(RoadSplineNetwork.sampleAt(YemenJourneys.GATE_M).widthM).mapValues { GpuMesh(it.value) }
         coffeeMeshes = JourneyScenery.coffeeTerrace().mapValues { GpuMesh(it.value) }
         boatMeshes = JourneyScenery.dhow().mapValues { GpuMesh(it.value) }
@@ -1167,6 +1173,20 @@ class MasalikGLRenderer(
                 s.z + s.rightZ * lane, s.headingRad + angle, 0f, roll, scale, scale, scale,
                 m.r, m.g, m.b, roughness = .86f)
         }
+        if (abs(center - YemenJourneys.TAIZ_MARKET_M) < 215f) {
+            val s = RoadSplineNetwork.sampleAt(YemenJourneys.TAIZ_MARKET_M)
+            model(marketMeshes, s, 41.2f, s.y + .23f)
+        }
+        if (abs(center - YemenJourneys.SABIR_LOOKOUT_M) < 370f) {
+            val s = RoadSplineNetwork.sampleAt(YemenJourneys.SABIR_LOOKOUT_M)
+            model(sabirMeshes, s, s.widthM * .5f + 1.9f, s.y)
+        }
+        if (abs(center - 1620f) < 390f) {
+            val s = RoadSplineNetwork.sampleAt(1620f)
+            val lane = -74f
+            val base = RoadSplineNetwork.terrainHeightAt(s.x+s.rightX*lane, s.z+s.rightZ*lane, s, lane)
+            model(fortMeshes, s, lane, base, .24f)
+        }
         if (abs(center - YemenJourneys.GATE_M) < 290f) {
             val s = RoadSplineNetwork.sampleAt(YemenJourneys.GATE_M)
             model(gateMeshes, s, 0f, s.y)
@@ -1207,16 +1227,6 @@ class MasalikGLRenderer(
                 val h = ramp.height(d, ramp.lane)
                 box(d,ramp.lane,.24f+h/2,ramp.width,h+.02f,ramp.length/12f,.66f,.63f,.54f)
             }
-            for (post in listOf(225f,235f)) box(post,39.2f,1.55f,.15f,3.1f,.15f,.32f,.21f,.14f)
-            for (i in 0..9) box(225.5f+i,39.2f,3.12f,4.5f,.14f,1.02f,
-                if (i%2==0) .72f else .95f, if (i%2==0) .22f else .82f,.34f)
-            for (i in 0..5) box(227f+i*1.1f,40.3f,.65f,1.25f,1.3f,1f,.52f,.36f,.19f)
-        }
-        if (abs(center - 2350f) < 340f) {
-            for (d in listOf(2347f,2353f)) for (side in listOf(10f,15f))
-                box(d,side,3.8f,.55f,8f,.55f,.55f,.53f,.47f)
-            box(2350f,12.5f,8.8f,7.2f,3.4f,8.3f,.53f,.73f,.72f)
-            box(2350f,12.5f,10.58f,7.4f,.23f,8.5f,.36f,.45f,.47f)
         }
     }
 
