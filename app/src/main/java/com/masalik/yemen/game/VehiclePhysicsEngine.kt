@@ -200,6 +200,13 @@ class VehiclePhysicsEngine {
         if (drivetrainMode == DrivetrainMode.TWO_WD || drivetrainMode == DrivetrainMode.AWD) diffLockActive = false
     }
 
+    internal fun steeringLimitRad(speedKmh: Float): Float {
+        val ratio = steeringWheelStyle.steeringRatio
+        val damping = (1f / (1f + speedKmh * (.012f / ratio))).coerceIn(.32f, 1.05f)
+        val lockFactor = if (diffLockActive) .90f else 1f
+        return (spec.maxSteerAngleDeg * PI.toFloat() / 180f) * damping * ratio.coerceIn(.88f, 1.16f) * lockFactor
+    }
+
     fun shiftManualUp() {
         manualGearIndex = (manualGearIndex + 1).coerceAtMost(spec.forwardGearsCount)
     }
@@ -281,8 +288,6 @@ class VehiclePhysicsEngine {
 
         // Smooth speed-sensitive steering response tuned by Eastern/European/Sport wheel profile
         val speedKmhAbs = abs(forwardSpeedMs * 3.6f)
-        val styleRatio = steeringWheelStyle.steeringRatio
-        val speedSteerDamp = (1f / (1f + speedKmhAbs * (0.012f / styleRatio))).coerceIn(0.32f, 1.05f)
         val targetSteer = input.steer.coerceIn(-1f, 1f)
         val steerRate = when (steeringWheelStyle) {
             SteeringWheelStyle.JAPANESE_SPORT -> 14.5f
@@ -291,8 +296,7 @@ class VehiclePhysicsEngine {
             SteeringWheelStyle.CLASSIC_HERITAGE -> 7.6f
         }
         currentSteerInputNorm += (targetSteer - currentSteerInputNorm) * (dt * steerRate).coerceAtMost(1f)
-        val maxSteerRad = (spec.maxSteerAngleDeg * PI.toFloat() / 180f) * speedSteerDamp * styleRatio.coerceIn(0.88f, 1.16f)
-        currentFrontSteerRad = currentSteerInputNorm * maxSteerRad * if (diffLockActive) .90f else 1f
+        currentFrontSteerRad = currentSteerInputNorm * steeringLimitRad(speedKmhAbs)
 
         // Drivetrain & gear calculation
         val gearMultiplier = when (customization.gearPreset) {

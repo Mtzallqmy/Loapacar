@@ -9,6 +9,9 @@ import com.masalik.yemen.data.MasalikRepository
 import com.masalik.yemen.game.AudioMixerSettings
 import com.masalik.yemen.game.AutomaticShifterState
 import com.masalik.yemen.game.CameraMode
+import com.masalik.yemen.game.AutoDriver
+import com.masalik.yemen.game.AutoDriveStatus
+import com.masalik.yemen.game.AutoDriveStyle
 import com.masalik.yemen.game.ControlInputs
 import com.masalik.yemen.game.DrivingRealismMode
 import com.masalik.yemen.game.DrivingTripLog
@@ -63,6 +66,8 @@ data class MasalikUiState(
     val cleanCinematicHud: Boolean = false,
     val previewVehicleId: VehicleId = VehicleId.SHAHIQ,
     val activeMission: MissionDefinition? = null,
+    val autoDriveStyle: AutoDriveStyle = AutoDriveStyle.SCENIC,
+    val autoDriveStatus: AutoDriveStatus? = null,
     val missionTimeRemainingSec: Int = 0,
     val missionAction: String? = null,
     val missionFraction: Float = 0f,
@@ -115,6 +120,8 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
 
     private var worldTimeHours: Float = 9.0f
     private var run: MissionRun? = null
+    private val autoDriver = AutoDriver()
+    private var autoDriveStatus: AutoDriveStatus? = null
     private var fixedRemainder = 0.0
     private var lastTelemetry = physics.telemetry()
     private var previousTelemetry = lastTelemetry
@@ -205,6 +212,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     @Synchronized fun onPauseLifecycle() {
+        stopAutoDrive()
         gyroController.stop()
         audioEngine.stop()
         inputThrottle = 0f
@@ -370,12 +378,17 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             } else {
                 inputSteerNorm
             }
-            val inputs = ControlInputs(
+            val manualInputs = ControlInputs(
                 throttle = inputThrottle,
                 brake = inputBrake,
                 steer = effectiveSteer,
                 clutch = inputClutch, handbrake = inputHandbrake
             )
+            if (autoDriveStatus != null && (manualInputs.throttle > .08f ||
+                    manualInputs.brake > .08f || kotlin.math.abs(manualInputs.steer) > .22f ||
+                    manualInputs.clutch > .08f || manualInputs.handbrake)) {
+                stopAutoDrive()
+            }
             fixedRemainder = (fixedRemainder + dt).coerceAtMost(0.12)
             val tick = 1.0 / 60.0
             var collision = 0f
@@ -384,7 +397,13 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
                 livingWorld.update(tick.toFloat(), physics.distanceAlongRoadM, physics.lateralOffsetM, physics.forwardSpeedMs, atmo.nightFactor, physics.weather)
                 physics.jobPayloadKg = run?.payloadKg ?: 0f
                 previousTelemetry = lastTelemetry
-                lastTelemetry = physics.step(tick.toFloat(), inputs, livingWorld)
+                val automated = if (autoDriveStatus != null)
+                    autoDriver.step(physics, livingWorld, state.autoDriveStyle) else null
+                if (automated != null) autoDriveStatus = automated.status
+                lastTelemetry = physics.step(tick.toFloat(), automated?.pedals ?: manualInputs, livingWorld)
+                if (automated != null && (!physics.engineRunning || physics.lastCollisionImpulse > 2f)) {
+                    stopAutoDrive()
+                }
                 val journey = run
                 val oldStage = journey?.stage
                 journey?.advance(tick.toFloat(), lastTelemetry, physics.headingOffsetFromRoadRad, physics.lastCollisionImpulse)
@@ -477,6 +496,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             _uiState.update {
                 it.copy(
                     telemetry = telemetry,
+                    autoDriveStatus = autoDriveStatus,
                     nearbySignal = livingWorld.nearbyTrafficSignal,
                     nearbyRadar = livingWorld.nearbyRadar,
                     radarFlashAlpha = radarFlashAlpha,
@@ -591,6 +611,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     fun dismissToast() = _uiState.update { it.copy(toastMessageAr = null) }
 
     @Synchronized fun setModal(modal: ActiveModal) {
+        if (modal != ActiveModal.DRIVING) stopAutoDrive()
         if (modal == ActiveModal.DRIVING && _uiState.value.activeModal != ActiveModal.DRIVING) {
             tripStartDistM = physics.totalDistanceDrivenM
             tripMaxSpeedKmh = 0f
@@ -634,6 +655,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     @Synchronized fun startMission(mission: MissionDefinition) {
+        stopAutoDrive()
         val current = _uiState.value.saveState
         val chosenVehicle = if (mission.recommendedVehicleId in current.unlockedVehicles) {
             mission.recommendedVehicleId
@@ -678,6 +700,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     @Synchronized fun fastTravelToCity(city: YemenCityHub) {
+        stopAutoDrive()
         if (run != null) {
             _uiState.update { it.copy(toastMessageAr = "أكمل المهمة أو ألغها قبل الانتقال السريع") }
             return
@@ -853,8 +876,14 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     fun setPhotoFilter(filter: PhotoColorFilter) = _uiState.update { it.copy(photoFilter = filter) }
     fun setPhotoFov(fov: Float) = _uiState.update { it.copy(photoFovDeg = fov.coerceIn(32f, 82f)) }
 
-    fun setShifter(shifter: AutomaticShifterState) { physics.autoShifter = shifter }
-    fun toggleTransmissionMode() { physics.transmissionMode = if (physics.transmissionMode == "auto") "manual" else "auto" }
+    @Synchronized fun setShifter(shifter: AutomaticShifterState) {
+        if (shifter != AutomaticShifterState.D) stopAutoDrive()
+        physics.autoShifter = shifter
+    }
+    @Synchronized fun toggleTransmissionMode() {
+        stopAutoDrive()
+        physics.transmissionMode = if (physics.transmissionMode == "auto") "manual" else "auto"
+    }
     fun manualGearUp() = physics.shiftManualUp()
     fun manualGearDown() = physics.shiftManualDown()
     fun cycleDrivetrain() = physics.cycleDrivetrain()
@@ -878,7 +907,39 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         physics.rightIndicatorOn = !physics.rightIndicatorOn
         if (physics.rightIndicatorOn) physics.leftIndicatorOn = false
     }
-    fun toggleCruiseControl() {
+    @Synchronized fun toggleAutoDrive() {
+        if (autoDriveStatus != null) {
+            stopAutoDrive()
+            return
+        }
+        if (run != null || _uiState.value.activeModal != ActiveModal.DRIVING) {
+            _uiState.update { it.copy(toastMessageAr = "السائق الآلي متاح أثناء التجوال الحر") }
+            return
+        }
+        if (inputHandbrake || !autoDriver.canEngage(physics)) {
+            _uiState.update { it.copy(toastMessageAr = "شغّل المحرك، اختر D، حرّر الجلنط ووجّه السيارة مع الطريق في الحارة اليمنى") }
+            return
+        }
+        physics.cruiseControlEnabled = false
+        autoDriveStatus = AutoDriveStatus.CRUISING
+        _uiState.update { it.copy(autoDriveStatus = autoDriveStatus) }
+    }
+
+    @Synchronized fun cycleAutoDriveStyle() {
+        _uiState.update {
+            val styles = AutoDriveStyle.entries
+            it.copy(autoDriveStyle = styles[(it.autoDriveStyle.ordinal + 1) % styles.size])
+        }
+    }
+
+    private fun stopAutoDrive() {
+        if (autoDriveStatus == null) return
+        autoDriveStatus = null
+        _uiState.update { it.copy(autoDriveStatus = null) }
+    }
+
+    @Synchronized fun toggleCruiseControl() {
+        stopAutoDrive()
         physics.cruiseControlEnabled = !physics.cruiseControlEnabled
         if (physics.cruiseControlEnabled) {
             physics.cruiseTargetKmh = (physics.forwardSpeedMs * 3.6f).coerceIn(35f, 120f)
@@ -894,6 +955,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
     @Synchronized fun recoverVehicleOnRoad() {
+        stopAutoDrive()
         physics.resetToRoad(physics.distanceAlongRoadM, 2.85f)
         snapToCurrentPose()
     }
@@ -949,7 +1011,8 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     // Cinematic 20-Second Instant Replay Studio Controls
-    fun enterReplayMode() {
+    @Synchronized fun enterReplayMode() {
+        stopAutoDrive()
         val cur = _uiState.value
         val fallback = ReplayFrame(
             telemetry = cur.telemetry,

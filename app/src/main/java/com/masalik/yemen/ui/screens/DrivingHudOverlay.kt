@@ -291,6 +291,10 @@ fun DrivingHudOverlay(
                         tag = "hud_wheel_style_button"
                     ) { vm.cycleSteeringWheelStyle() }
 
+                    HudIconPill(Icons.Default.Autorenew, if (state.autoDriveStatus != null) "إيقاف السائق الآلي" else "تشغيل السائق الآلي",
+                        "hud_autodrive_button", active = state.autoDriveStatus != null, activeColor = MasalikEmerald) {
+                        vm.toggleAutoDrive()
+                    }
                     HudIconPill(Icons.Default.Map, "خريطة اليمن", "hud_map_button") { vm.setModal(ActiveModal.WORLD_MAP) }
                     HudIconPill(Icons.Default.Radio, "الراديو اليمني", "hud_radio_button", active = state.saveState.radioSettings.isPlaying) { vm.toggleRadioOpen() }
                     HudIconPill(Icons.Default.SlowMotionVideo, "إعادة سينمائية 20ث", "hud_replay_button") { vm.enterReplayMode() }
@@ -353,6 +357,10 @@ fun DrivingHudOverlay(
                     Text("${t.altitudeM.roundToInt()}م", color = MasalikSky, fontFamily = JetBrainsMonoFontFamily, fontSize = 10.sp)
                     Text("·", color = MasalikMuted)
                     Text("${state.fps} FPS", color = MasalikEmerald, fontFamily = JetBrainsMonoFontFamily, fontSize = 10.sp)
+                }
+
+                state.autoDriveStatus?.let { driver ->
+                    ToolChip("السائق الآلي · ${driver.labelAr}", true) { vm.toggleAutoDrive() }
                 }
 
                 // Live Traffic Signal & Pedestrian Crosswalk Alert
@@ -484,6 +492,10 @@ fun DrivingHudOverlay(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text("أنظمة المركبة والمقصورة", color = MasalikAmberSoft, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ToolChip("السائق الآلي", state.autoDriveStatus != null) { vm.toggleAutoDrive() }
+                    ToolChip(state.autoDriveStyle.labelAr, false) { vm.cycleAutoDriveStyle() }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     ToolChip("مصابيح: ${t.headlightBeamMode.labelAr}", t.headlightsOn) { vm.toggleHeadlights() }
                     ToolChip("مسّاحات", t.wipersOn) { vm.toggleWipers() }
