@@ -132,7 +132,9 @@ class ShaderLibrary {
             void main() {
                 vec4 worldPos = uModelMatrix * vec4(aPosition, 1.0);
                 vWorldPos = worldPos.xyz;
-                vNormal = normalize(mat3(uModelMatrix) * aNormal);
+                mat3 axes = mat3(uModelMatrix);
+                vec3 scaleSquared = vec3(dot(axes[0],axes[0]),dot(axes[1],axes[1]),dot(axes[2],axes[2]));
+                vNormal = normalize(axes * (aNormal / max(scaleSquared, vec3(0.000001))));
                 vTexCoord = aTexCoord * uUvScale;
                 gl_Position = uMvpMatrix * vec4(aPosition, 1.0);
             }

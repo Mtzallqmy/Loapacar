@@ -92,6 +92,51 @@ internal object JourneyScenery {
         for (i in -5..5) box(Finish.EARTH,radius*i/5.7f,10.74f,0f,.68f,.68f,3.5f)
     }.finish()
 
+    fun roadsideTree(palm: Boolean): Map<Finish,FloatArray> = Builder().apply {
+        val rng = kotlin.random.Random(if (palm) 349 else 613)
+        if (palm) {
+            for (i in 0 until 10) {
+                val bend=i*i*.003f
+                val radius=.24f-i*.009f
+                ring(if(i%3==0) Finish.EARTH else Finish.WOOD,bend,i*.52f,0f,
+                    radius+.017f,radius,.55f,9)
+            }
+            for (leaf in 0 until 17) {
+                val angle=leaf*2.4
+                val length=if (leaf%3==0) 2.9f else 3.8f
+                val dx=cos(angle).toFloat();val dz=sin(angle).toFloat()
+                fun stem(t: Float) = P(.25f+dx*length*t,5.3f+1.45f*sin(PI*t).toFloat()-.59f*t,
+                    dz*length*t)
+                for (j in 0 until 9) {
+                    val t=j/9f;val next=(j+1)/9f
+                    val v=stem(t);val w=stem(next)
+                    val material=if(leaf%3==0) Finish.GREEN else Finish.LEAVES
+                    quad(material,P(v.x-.035f*dz,v.y,v.z+.035f*dx),P(w.x-.024f*dz,w.y,w.z+.024f*dx),
+                        P(w.x+.024f*dz,w.y,w.z-.024f*dx),P(v.x+.035f*dz,v.y,v.z-.035f*dx))
+                    for(side in listOf(-1,1)) {
+                        val span=.17f+.49f*sin(PI*(.12f+.88f*t)).toFloat()
+                        val tip=P(w.x+side*dz*span+dx*.19f,w.y-.28f,w.z-side*dx*span+dz*.19f)
+                        if(side==1) tri(material,v,w,tip) else tri(material,w,v,tip)
+                    }
+                }
+            }
+        } else {
+            ring(Finish.WOOD,0f,-.1f,0f,.27f,.17f,2.4f,9)
+            for (i in 0 until 11) {
+                val angle=2.40*i
+                val reach=.35f+rng.nextFloat()*1.9f
+                val x=cos(angle).toFloat()*reach;val z=sin(angle).toFloat()*reach
+                val y=2.65f+(2.3f-reach)*.68f+rng.nextFloat()*.45f
+                val width=.92f+rng.nextFloat()*.59f
+                val m=if(i%3==0) Finish.GREEN else Finish.LEAVES
+                tri(Finish.WOOD,P(-.16f,1.3f,.06f),P(.17f,1.7f,-.08f),P(x,y+.2f,z))
+                ring(m,x,y-.38f,z,width*.37f,width,.59f,9)
+                ring(m,x,y+.21f,z,width,width*.66f,.52f,9)
+                ring(m,x,y+.73f,z,width*.66f,.07f,.28f,9)
+            }
+        }
+    }.finish()
+
     fun coffeeTerrace(): Map<Finish, FloatArray> = Builder().apply {
         for (row in 0..3) {
             val x=-row*4.2f; val h=row*1.4f

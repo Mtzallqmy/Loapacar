@@ -38,8 +38,8 @@ object YemenJourneys {
             RoadObjective(GATE_M, 2.85f, ObjectiveKind.GATE, "عُد إلى الطريق الرئيسي واعبر تحت القوس"),
             RoadObjective(15610f, 2.85f, ObjectiveKind.ALIGHT, "أنزل الركاب عند سوق المساء")),
         trip("journey_aden_quay", "عدن", "موعد المراكب",
-            "من الكورنيش إلى مرسى الصيادين عند الفجر. خفّف سرعتك فوق مطبّي الرصيف واصطف عند المراكب.",
-            21370f, VehicleId.SAHIL, GameModeCategory.CHALLENGE, TimeOfDayPreset.DAWN, WeatherPreset.CLEAR,
+            "من الكورنيش إلى مرسى الصيادين عند الشروق. خفّف سرعتك فوق مطبّي الرصيف واصطف عند المراكب.",
+            21370f, VehicleId.SAHIL, GameModeCategory.CHALLENGE, TimeOfDayPreset.SUNRISE, WeatherPreset.CLEAR,
             RoadObjective(21480f, 2.85f, ObjectiveKind.GATE, "تابع السير بمحاذاة البحر"),
             RoadObjective(21590f, 2.85f, ObjectiveKind.GATE, "اقترب من الرصيف على مهل"),
             RoadObjective(HARBOUR_M, 2.85f, ObjectiveKind.PARK, "اصطف عند المراكب وثبّت المكابح لثانيتين"))

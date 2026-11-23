@@ -42,6 +42,8 @@ class ProceduralTextures(private val assets: android.content.res.AssetManager) {
     val heritageMosqueTex: Int
     val curveChevronTex: Int
     val alloyRimTex: Int
+    val autoGlassTex: Int
+    val rearPlateTex: Int
     val contactShadowTex: Int
 
     private val maxAnisotropy: Float
@@ -68,7 +70,40 @@ class ProceduralTextures(private val assets: android.content.res.AssetManager) {
         heritageMosqueTex = uploadBitmap(createHeritageMosqueBitmap(), repeat = true)
         curveChevronTex = uploadBitmap(createCurveChevronBitmap(), repeat = false)
         alloyRimTex = uploadBitmap(createAlloyRimBitmap(), repeat = false)
+        autoGlassTex = uploadBitmap(createAutomotiveGlass(), repeat = false)
+        rearPlateTex = uploadBitmap(createRearPlate(), repeat = false)
         contactShadowTex = uploadBitmap(createContactShadowBitmap(), repeat = false)
+    }
+
+    private fun createAutomotiveGlass(): Bitmap {
+        val bmp=Bitmap.createBitmap(512,256,Bitmap.Config.ARGB_8888)
+        val c=Canvas(bmp)
+        val p=Paint(Paint.ANTI_ALIAS_FLAG)
+        p.shader=LinearGradient(0f,0f,64f,256f,intArrayOf(Color.rgb(22,35,41),
+            Color.rgb(44,67,77),Color.rgb(89,113,125),Color.rgb(45,65,78)),
+            floatArrayOf(0f,.40f,.69f,1f),Shader.TileMode.CLAMP)
+        c.drawRect(0f,0f,512f,256f,p)
+        p.shader=null
+        p.color=Color.argb(65,9,17,22)
+        for (x in listOf(132f,374f)) {
+            c.drawRoundRect(x-20f,40f,x+20f,84f,10f,10f,p)
+            c.drawRoundRect(x-46f,14f,x+46f,55f,18f,18f,p)
+        }
+        p.color=Color.argb(22,198,188,156); p.strokeWidth=1f
+        for (i in 0..8) c.drawLine(0f,37f+i*18f,512f,37f+i*18f,p)
+        return bmp
+    }
+
+    private fun createRearPlate(): Bitmap {
+        val bmp=Bitmap.createBitmap(384,108,Bitmap.Config.ARGB_8888)
+        val c=Canvas(bmp); val p=Paint(Paint.ANTI_ALIAS_FLAG)
+        c.drawColor(Color.rgb(222,222,205))
+        p.color=Color.rgb(55,92,95); c.drawRect(0f,0f,92f,108f,p)
+        p.typeface=android.graphics.Typeface.DEFAULT_BOLD
+        p.textAlign=Paint.Align.CENTER
+        p.color=Color.WHITE;p.textSize=25f;c.drawText("اليمن",46f,64f,p)
+        p.color=Color.rgb(31,40,41);p.textSize=59f;c.drawText("٣٢  ·  ٢٠٢٦",235f,75f,p)
+        return bmp
     }
 
     private fun queryMaxAnisotropy(): Float {

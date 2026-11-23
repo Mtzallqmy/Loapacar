@@ -44,6 +44,7 @@ class MasalikGLRenderer(
     private val onStepFrame: (dtSec: Float) -> RenderFrameSnapshot
 ) : GLSurfaceView.Renderer {
 
+    private val canopies = mutableMapOf<Coachwork.Profile, Map<Coachwork.Material, GpuMesh>>()
     private val bodies = mutableMapOf<Pair<VehicleId, Boolean>, GpuMesh>()
     private var firstFrameReported = false
     private var frameQuality = com.masalik.yemen.game.GraphicsQuality.HIGH
@@ -81,6 +82,8 @@ class MasalikGLRenderer(
     private lateinit var textures: ProceduralTextures
     private lateinit var roundedMesh: GpuMesh
     private lateinit var humanMesh: GpuMesh
+    private lateinit var palmMeshes: Map<JourneyScenery.Finish, GpuMesh>
+    private lateinit var hillTreeMeshes: Map<JourneyScenery.Finish, GpuMesh>
     private lateinit var gateMeshes: Map<JourneyScenery.Finish, GpuMesh>
     private lateinit var coffeeMeshes: Map<JourneyScenery.Finish, GpuMesh>
     private lateinit var boatMeshes: Map<JourneyScenery.Finish, GpuMesh>
@@ -134,6 +137,9 @@ class MasalikGLRenderer(
 
         shaders = ShaderLibrary()
         bodies.clear()
+        canopies.clear()
+        palmMeshes = JourneyScenery.roadsideTree(true).mapValues { GpuMesh(it.value) }
+        hillTreeMeshes = JourneyScenery.roadsideTree(false).mapValues { GpuMesh(it.value) }
         gateMeshes = JourneyScenery.gate(RoadSplineNetwork.sampleAt(YemenJourneys.GATE_M).widthM).mapValues { GpuMesh(it.value) }
         coffeeMeshes = JourneyScenery.coffeeTerrace().mapValues { GpuMesh(it.value) }
         boatMeshes = JourneyScenery.dhow().mapValues { GpuMesh(it.value) }
@@ -1007,13 +1013,14 @@ class MasalikGLRenderer(
                 val tz = sample.z + sample.rightZ * lat
                 val ty = RoadSplineNetwork.terrainHeightAt(tx, tz, sample, lat)
 
-                if (sample.regionId in listOf(RegionId.MASALIK_DESERT, RegionId.SHIBAM_HADRAMOUT, RegionId.TIHAMA_PLAINS, RegionId.COASTAL_ROAD)) {
-                    drawOrientedBox(tx, ty + 3.1f, tz, 0f, 0.42f, 6.2f, 0.42f, 0.48f, 0.34f, 0.22f)
-                    drawCone(tx, ty + 6.4f, tz, 4.6f, 2.2f, 0.18f, 0.48f, 0.20f)
-                } else {
-                    drawOrientedBox(tx, ty + 1.5f, tz, 0f, 0.38f, 3.0f, 0.38f, 0.40f, 0.28f, 0.18f)
-                    drawCone(tx, ty + 4.2f, tz, 3.4f, 4.6f, 0.15f, 0.40f, 0.18f)
+                val tree = when (sample.regionId) {
+                    RegionId.MASALIK_DESERT, RegionId.SHIBAM_HADRAMOUT,
+                    RegionId.TIHAMA_PLAINS, RegionId.COASTAL_ROAD -> palmMeshes
+                    else -> hillTreeMeshes
                 }
+                val scale = .76f + (hash%13)*.043f
+                for ((m, mesh) in tree) drawOrientedMesh(mesh,tx,ty,tz,sample.headingRad+hash%11,
+                    0f,0f,scale,scale,scale,m.r,m.g,m.b,roughness=.93f)
 
                 // Reflective Curve Chevron Signs (>>>) on outside of sharp mountain switchbacks!
                 if (abs(sample.curvatureRadPerM) > 0.0046f) {
@@ -1799,16 +1806,16 @@ class MasalikGLRenderer(
         )
         // Lower dark carbon/steel rock-slider & rear diffuser skirt
         drawOrientedMesh(
-            cubeMesh,
+            roundedMesh,
             t.posX, baseY + 0.12f, t.posZ,
             visualHeading, pitchDeg, rollDeg,
-            wid * 1.02f, 0.22f, len * 0.98f, 0.10f, 0.11f, 0.13f,
+            wid * .88f, 0.15f, len * 0.91f, 0.10f, 0.11f, 0.13f,
             metallic = 0.38f, roughness = 0.45f
         )
 
         // 3. Sculpted Front Chrome/Dark Grille & Hood Crease
         drawOrientedMesh(
-            cubeMesh,
+            roundedMesh,
             t.posX + fwdX * (len * 0.495f), baseY + lowerH * 0.46f, t.posZ + fwdZ * (len * 0.495f),
             visualHeading, pitchDeg, rollDeg,
             wid * 0.64f, lowerH * 0.50f, 0.12f, 0.08f, 0.09f, 0.11f,
@@ -1816,14 +1823,14 @@ class MasalikGLRenderer(
         )
         // Chrome Grille Horizontal Slats + Emblem Badge
         drawOrientedMesh(
-            cubeMesh,
+            roundedMesh,
             t.posX + fwdX * (len * 0.505f), baseY + lowerH * 0.50f, t.posZ + fwdZ * (len * 0.505f),
             visualHeading, pitchDeg, rollDeg,
             wid * 0.58f, 0.06f, 0.06f, 0.85f, 0.88f, 0.92f,
             metallic = 0.92f, roughness = 0.10f
         )
         drawOrientedMesh(
-            cubeMesh,
+            roundedMesh,
             t.posX + fwdX * (len * 0.512f), baseY + lowerH * 0.50f, t.posZ + fwdZ * (len * 0.512f),
             visualHeading, pitchDeg, rollDeg,
             0.22f, 0.16f, 0.06f, 0.96f, 0.72f, 0.16f,
@@ -1843,27 +1850,31 @@ class MasalikGLRenderer(
             isTruck -> len * 0.26f
             else -> -len * 0.07f
         }
-        // Reflective Smoked Panoramic Glass Greenhouse
-        drawOrientedMesh(
-            if (isTruck || isBus || isPickup || vehicleId in listOf(VehicleId.SHAHIQ, VehicleId.RAHHAL)) utilityCabinMesh else cabinMesh,
-            t.posX + fwdX * cabOffset, baseY + lowerH + cabH * 0.44f, t.posZ + fwdZ * cabOffset,
-            visualHeading, pitchDeg, rollDeg,
-            wid * 0.90f, cabH, cabLen,
-            0.07f, 0.12f, 0.19f,
-            metallic = 0.92f, roughness = 0.06f
-        )
-        // Sculpted Metallic Roof Panel
-        drawOrientedMesh(
-            cubeMesh,
-            t.posX + fwdX * (cabOffset - 0.06f), baseY + lowerH + cabH * 0.91f, t.posZ + fwdZ * (cabOffset - 0.06f),
-            visualHeading, pitchDeg, rollDeg,
-            wid * 0.72f, 0.10f, cabLen * 0.62f,
-            pr, pg, pb, metallic = paintMet, roughness = paintRough
-        )
+        val profile = when {
+            isBus || isTruck -> Coachwork.Profile.COMMERCIAL
+            isPickup -> Coachwork.Profile.PICKUP
+            vehicleId == VehicleId.BARQ -> Coachwork.Profile.COUPE
+            vehicleId == VehicleId.SHAHIQ || vehicleId == VehicleId.RAHHAL -> Coachwork.Profile.WAGON
+            else -> Coachwork.Profile.SALOON
+        }
+        val canopy = canopies.getOrPut(profile) { Coachwork.build(profile).mapValues { GpuMesh(it.value) } }
+        for ((material, mesh) in canopy) {
+            val paint = material == Coachwork.Material.PAINT
+            val glass = material == Coachwork.Material.GLAZING
+            val chrome = material == Coachwork.Material.BRIGHTWORK
+            val r = when { paint -> pr; chrome -> .68f; glass -> .62f; else -> .045f }
+            val g = when { paint -> pg; chrome -> .73f; glass -> .76f; else -> .05f }
+            val b = when { paint -> pb; chrome -> .76f; glass -> .85f; else -> .055f }
+            drawOrientedMesh(mesh,t.posX+fwdX*cabOffset,baseY+lowerH+cabH*.44f,t.posZ+fwdZ*cabOffset,
+                visualHeading,pitchDeg,rollDeg,wid*.94f,cabH,cabLen,r,g,b,
+                texId=if (glass) textures.autoGlassTex else textures.whiteTex,
+                metallic=when { paint -> paintMet; chrome -> .86f; glass -> .58f; else -> .02f },
+                roughness=when { paint -> paintRough; glass -> .10f; chrome -> .21f; else -> .81f })
+        }
         // Left & Right Aerodynamic Side Mirrors
         for (sx in intArrayOf(-1, 1)) {
             drawOrientedMesh(
-                cubeMesh,
+                roundedMesh,
                 t.posX + fwdX * (cabOffset + cabLen * 0.28f) + rightX * (sx * (wid * 0.53f)),
                 baseY + lowerH + 0.16f,
                 t.posZ + fwdZ * (cabOffset + cabLen * 0.28f) + rightZ * (sx * (wid * 0.53f)),
@@ -1881,12 +1892,15 @@ class MasalikGLRenderer(
                 bedZ + rightZ * side * wid * 0.43f, visualHeading, pitchDeg, rollDeg,
                 0.14f, 0.30f, len * 0.38f, pr, pg, pb, metallic = paintMet, roughness = paintRough)
         }
-        // Painted pillars separate the side windows instead of a single dark glass slab.
+        // Door pulls follow the belt line, including the rear door on longer cabs.
         for (side in intArrayOf(-1, 1)) {
-            drawOrientedBox(t.posX + rightX * side * wid * 0.455f + fwdX * cabOffset,
-                baseY + lowerH + cabH * 0.45f,
-                t.posZ + rightZ * side * wid * 0.455f + fwdZ * cabOffset, visualHeading,
-                0.08f, cabH * 0.92f, 0.09f, pr * 0.6f, pg * 0.6f, pb * 0.6f)
+            val doors = if (isTruck || vehicleId == VehicleId.BARQ) 1 else 2
+            for (i in 0 until doors) {
+                val along = cabOffset + cabLen*(.12f-.37f*i)
+                drawOrientedMesh(roundedMesh,t.posX+rightX*side*wid*.492f+fwdX*along,
+                    baseY+lowerH*.85f,t.posZ+rightZ*side*wid*.492f+fwdZ*along,visualHeading,
+                    pitchDeg,rollDeg,.045f,.052f,.17f,.42f,.44f,.45f,metallic=.67f,roughness=.28f)
+            }
         }
 
         // 5. Dual Chrome Rear Exhaust Tips
@@ -1941,19 +1955,11 @@ class MasalikGLRenderer(
                 )
             }
         } else if (vehicleId in listOf(VehicleId.SHAHIQ, VehicleId.RAHHAL)) {
-            // Rear-Door Mounted Full-Size 4x4 Spare Tire + Chrome Side Beltline Trim
-            drawOrientedMesh(
-                cubeMesh,
-                t.posX - fwdX * (len * 0.515f), baseY + lowerH * 0.78f, t.posZ - fwdZ * (len * 0.515f),
-                visualHeading, pitchDeg, rollDeg, 0.74f, 0.74f, 0.28f,
-                0.13f, 0.15f, 0.18f, metallic = 0.35f, roughness = 0.55f
-            )
-            drawOrientedMesh(
-                cubeMesh,
-                t.posX - fwdX * (len * 0.525f), baseY + lowerH * 0.78f, t.posZ - fwdZ * (len * 0.525f),
-                visualHeading, pitchDeg, rollDeg, 0.46f, 0.46f, 0.28f,
-                pr, pg, pb, metallic = paintMet, roughness = paintRough
-            )
+            val spareDiameter = spec.wheelRadiusM * 1.86f
+            drawOrientedMesh(wheelMesh,t.posX-fwdX*len*.518f,baseY+lowerH*.73f,
+                t.posZ-fwdZ*len*.518f,visualHeading+PI.toFloat()*.5f,pitchDeg,rollDeg,
+                .26f,spareDiameter,spareDiameter,.86f,.86f,.85f,
+                texId=textures.alloyRimTex,metallic=.21f,roughness=.63f)
         } else if (vehicleId in listOf(VehicleId.MADINA, VehicleId.ASIL, VehicleId.SAHIL)) {
             // Sleek Brushed-Chrome Beltline Accent Molding
             drawOrientedMesh(
@@ -2006,14 +2012,24 @@ class MasalikGLRenderer(
         }
         val blEm = if (t.brake > 0.08f || t.handbrake) 2.2f else 0.45f
 
-        // Rear full-width luxury LED light bar
-        drawOrientedMesh(
-            cubeMesh,
-            t.posX - fwdX * (len * 0.502f), baseY + lowerH * 0.58f, t.posZ - fwdZ * (len * 0.502f),
-            visualHeading, pitchDeg, rollDeg,
-            wid * 0.88f, 0.08f, 0.07f, 0.95f, 0.08f, 0.06f,
-            emR = blEm * 0.72f, emG = 0.02f, emB = 0.02f
-        )
+        fun rear(mesh: GpuMesh, x: Float, height: Float, d: Float, w: Float, h: Float, depth: Float,
+                 r: Float, g: Float, b: Float, tex: Int = textures.whiteTex, glow: Float = 0f) {
+            drawOrientedMesh(mesh,t.posX+rightX*x-fwdX*d,baseY+height,t.posZ+rightZ*x-fwdZ*d,
+                visualHeading,pitchDeg,rollDeg,w,h,depth,r,g,b,texId=tex,emR=glow,roughness=.36f)
+        }
+        val pickupTail = isPickup && custom.pickupAccessory == PickupAccessoryType.NONE
+        if (pickupTail) {
+            rear(roundedMesh,0f,lowerH+.085f,len*.466f,wid*.83f,.26f,.105f,pr,pg,pb)
+            rear(roundedMesh,0f,lowerH+.15f,len*.483f,.24f,.047f,.045f,.09f,.10f,.11f)
+        }
+        rear(roundedMesh,0f,lowerH*.22f,len*.494f,wid*.91f,.145f,.19f,.14f,.15f,.16f)
+        val plateX = if (profile==Coachwork.Profile.WAGON) -wid*.31f else 0f
+        val plateY = if (profile==Coachwork.Profile.WAGON) lowerH*.30f else lowerH*.43f
+        rear(roundedMesh,plateX,plateY,len*.507f,.47f,.148f,.052f,.10f,.105f,.11f)
+        rear(cubeMesh,plateX,plateY,len*.515f,.422f,.115f,.023f,1f,1f,1f,textures.rearPlateTex)
+        if (profile==Coachwork.Profile.COUPE) {
+            rear(roundedMesh,0f,lowerH*.66f,len*.503f,wid*.81f,.032f,.042f,.58f,.025f,.02f,glow=blEm*.42f)
+        }
 
         for (sx in intArrayOf(-1, 1)) {
             drawOrientedMesh(
@@ -2026,16 +2042,19 @@ class MasalikGLRenderer(
                 emR = hlEm, emG = hlEm * 0.96f, emB = hlEm * 0.88f
             )
             val isBlinkerLit = blinkerOn && ((sx < 0 && t.leftIndicatorOn) || (sx > 0 && t.rightIndicatorOn))
-            drawOrientedMesh(
-                cubeMesh,
-                t.posX - fwdX * (len * 0.506f) + rightX * (sx * wid * 0.36f),
-                baseY + lowerH * 0.56f,
-                t.posZ - fwdZ * (len * 0.506f) + rightZ * (sx * wid * 0.36f),
-                visualHeading, pitchDeg, rollDeg,
-                0.42f, 0.18f, 0.09f,
-                if (isBlinkerLit) 1f else 0.98f, if (isBlinkerLit) 0.65f else 0.08f, 0.04f,
-                emR = if (isBlinkerLit) 2.0f else blEm, emG = if (isBlinkerLit) 1.15f else 0.02f
-            )
+            val vertical = isPickup || isTruck || isBus
+            val lampX = sx*wid*(if (vertical) .398f else .355f)
+            val lampWidth = wid*(if (vertical) .105f else .205f)
+            val lampHeight = if (vertical) .27f else .12f
+            val lampY = lowerH*.56f
+            rear(roundedMesh,lampX,lampY,len*.491f,lampWidth+.035f,lampHeight+.035f,.14f,.16f,.04f,.045f)
+            rear(roundedMesh,lampX,lampY,len*.504f,lampWidth,lampHeight,.055f,.42f,.028f,.025f)
+            rear(roundedMesh,lampX,lampY+lampHeight*.20f,len*.51f,lampWidth*.87f,.034f,.033f,
+                .75f,.04f,.028f,glow=blEm*.68f)
+            rear(roundedMesh,lampX+sx*lampWidth*.30f,lampY-lampHeight*.18f,len*.51f,
+                lampWidth*.24f,lampHeight*.27f,.034f,if(isBlinkerLit) 1f else .62f,
+                if(isBlinkerLit) .62f else .33f,.12f,glow=if(isBlinkerLit) 1.6f else .02f)
+
         }
     }
 
