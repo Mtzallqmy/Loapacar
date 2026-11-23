@@ -11,23 +11,25 @@ class YemenJourneyTest {
             val run = MissionRun(journey.mission)
             val car = VehiclePhysicsEngine()
             for (goal in journey.stops) {
-                assertEquals(goal, run.target)
+                assertEquals(journey.mission.id, goal, run.target)
                 val road = RoadSplineNetwork.sampleAt(goal.distance)
                 assertFalse(CityStreetNetwork.constrain(goal.distance, goal.lane, road.widthM*.5f).hitBoundary)
-                car.resetToRoad(goal.distance, goal.lane)
+                val heading = if (goal.reverseRoute) Math.PI.toFloat() else 0f
+                car.resetToRoad(goal.distance, goal.lane, heading)
                 val telemetry = car.telemetry().copy(handbrake=true, forwardSpeedMs=if(goal.isStop) 0f else 2f)
-                run.advance(.016f, telemetry, 0f, 0f)
+                run.advance(.016f, telemetry, heading, 0f)
                 if (goal.isStop) {
                     if (goal.kind != ObjectiveKind.PARK) {
                         assertTrue(run.waitingForAction)
                         run.useEquipment()
                     }
-                    repeat(125) { run.advance(.017f,telemetry,0f,0f) }
+                    repeat(125) { run.advance(.017f, telemetry, heading, 0f) }
                 }
                 if (!run.finished) {
-                    val resumed=MissionRun(journey.mission,run.snapshot(goal.lane,null))
+                    val resumed=MissionRun(journey.mission,run.snapshot(goal.lane, null, heading))
                     assertEquals(run.target,resumed.target)
                     assertEquals(run.payloadKg,resumed.payloadKg,.001f)
+                    assertEquals(heading, resumed.snapshot(goal.lane, null, heading).headingOffsetRad, 0f)
                 }
             }
             assertTrue(run.finished)
