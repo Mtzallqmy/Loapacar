@@ -285,6 +285,7 @@ class MasalikGLRenderer(
         GLES30.glUniform1f(shaders.uFogDensity, atmo.fogDensity)
         GLES30.glUniform3f(shaders.uCameraPos, currentCamX, currentCamY, currentCamZ)
         GLES30.glUniform1f(shaders.uNightFactor, atmo.nightFactor)
+        GLES30.glUniform1f(shaders.uWaterTime, -1f)
 
         val fwdX = sin(t.headingRad)
         val fwdZ = cos(t.headingRad)
@@ -859,6 +860,16 @@ class MasalikGLRenderer(
                         val faceX = sample.x + sample.rightX * streetLat
                         val faceZ = sample.z + sample.rightZ * streetLat
                         if (profile.gypsumTrim) {
+                            drawOrientedBox(faceX, sample.y + 1.38f, faceZ, sample.headingRad,
+                                .29f, 2.76f, buildingD*.985f, .68f, .63f, .56f,
+                                texId = textures.taizStoneTex, uvScaleY = .65f)
+                            for (window in -1..1) {
+                                val along = window * buildingD * .25f
+                                val wx = faceX + sin(sample.headingRad) * along
+                                val wz = faceZ + cos(sample.headingRad) * along
+                                drawOrientedBox(wx, sample.y + .69f, wz, sample.headingRad,
+                                    .44f, 1.37f, .95f, .27f, .19f, .12f)
+                            }
                             // White gypsum floor bands and paired qamariya-scale window surrounds.
                             for (floor in 1 until floors) for (window in -1..1) {
                                 val along = window * buildingD * 0.27f
@@ -1058,11 +1069,13 @@ class MasalikGLRenderer(
 
             if (sample.regionId == RegionId.COASTAL_ROAD) {
                 val seaLat = sample.widthM * 0.5f + 46f
+                GLES30.glUniform1f(shaders.uWaterTime, weatherAnimTime)
                 drawOrientedBox(
                     sample.x + sample.rightX * seaLat, sample.y - 2.6f, sample.z + sample.rightZ * seaLat,
                     sample.headingRad, 80f, 0.4f, 24f,
-                    0.06f, 0.38f, 0.64f, metallic = 0.72f, roughness = 0.12f
+                    0.035f, 0.30f, 0.40f, metallic = 0.42f, roughness = 0.19f
                 )
+                GLES30.glUniform1f(shaders.uWaterTime, -1f)
             }
             dInt += 22
         }
@@ -1202,6 +1215,15 @@ class MasalikGLRenderer(
             }
         }
         if (abs(center - YemenJourneys.HARBOUR_M) < 240f) {
+            for (section in -3..3) {
+                val edge = RoadSplineNetwork.sampleAt(YemenJourneys.HARBOUR_M + section*13f)
+                val offset = edge.widthM*.5f+7f
+                val x=edge.x+edge.rightX*offset
+                val z=edge.z+edge.rightZ*offset
+                drawOrientedBox(x,edge.y-.45f,z,edge.headingRad,.88f,1.8f,12.95f,
+                    .61f,.55f,.45f,texId=textures.taizStoneTex,uvScaleX=1.7f)
+                drawOrientedBox(x,edge.y+.54f,z,edge.headingRad,1f,.18f,13f,.77f,.71f,.60f)
+            }
             for (i in -1..2) {
                 val s = RoadSplineNetwork.sampleAt(YemenJourneys.HARBOUR_M + i * 24f)
                 val phase = weatherAnimTime * .85f + i * 2.1f

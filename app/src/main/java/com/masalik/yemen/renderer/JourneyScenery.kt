@@ -211,6 +211,13 @@ internal object JourneyScenery {
             val x=-row*4.2f; val h=row*1.4f
             box(Finish.STONE,x,h-3f,0f,4.4f,3.3f,27f-row*1.8f)
             box(Finish.GREEN,x,h+.27f,0f,4.35f,.21f,27f-row*1.8f)
+            val face = x + 2.2f
+            for (course in 0..2) for (j in -5..5) {
+                val z = j*(2.16f-row*.12f)+.47f*(course%2)
+                val raised = .06f+.035f*abs((j+row)%4)
+                box(if ((j+course+row)%4==0) Finish.LIME else Finish.STONE,
+                    face+raised*.5f,h-course*.45f-.18f,z,raised,.38f,1.82f-row*.12f)
+            }
             for (i in -4..4) {
                 val z=i*2.65f+sin(row+i.toFloat())*.43f
                 ring(Finish.WOOD,x,h+.4f,z,.12f,.08f,.64f,5)

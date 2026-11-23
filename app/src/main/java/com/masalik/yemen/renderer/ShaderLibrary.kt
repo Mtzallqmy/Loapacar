@@ -29,6 +29,7 @@ class ShaderLibrary {
     val uRoughness: Int
     val uWetness: Int
     val uPuddleStrength: Int
+    val uWaterTime: Int
     val uHeadlightPos: Int
     val uHeadlightDir: Int
     val uHeadlightStrength: Int
@@ -71,6 +72,7 @@ class ShaderLibrary {
         uRoughness = GLES30.glGetUniformLocation(worldProgram, "uRoughness")
         uWetness = GLES30.glGetUniformLocation(worldProgram, "uWetness")
         uPuddleStrength = GLES30.glGetUniformLocation(worldProgram, "uPuddleStrength")
+        uWaterTime = GLES30.glGetUniformLocation(worldProgram, "uWaterTime")
         uHeadlightPos = GLES30.glGetUniformLocation(worldProgram, "uHeadlightPos")
         uHeadlightDir = GLES30.glGetUniformLocation(worldProgram, "uHeadlightDir")
         uHeadlightStrength = GLES30.glGetUniformLocation(worldProgram, "uHeadlightStrength")
@@ -165,6 +167,7 @@ class ShaderLibrary {
             uniform float uRoughness;
             uniform float uWetness;
             uniform float uPuddleStrength;
+            uniform float uWaterTime;
             uniform vec3 uHeadlightPos;
             uniform vec3 uHeadlightDir;
             uniform float uHeadlightStrength;
@@ -178,6 +181,14 @@ class ShaderLibrary {
                 vec3 albedo = mix(uBaseColor.rgb, uBaseColor.rgb * texSample.rgb, uUseTexture);
 
                 vec3 N = normalize(vNormal);
+                if (uWaterTime >= 0.0 && N.y > .7) {
+                    vec2 p = vWorldPos.xz;
+                    float broad = cos(dot(p,vec2(.58,.89)) - uWaterTime*1.75);
+                    float ripple = cos(dot(p,vec2(-1.57,2.94)) - uWaterTime*2.15);
+                    float swell = cos(dot(p,vec2(1.27,-.96)) - uWaterTime*.95);
+                    N = normalize(vec3(.16*broad-.065*ripple+.06*swell,1.0,.22*broad+.09*ripple-.10*swell));
+                    albedo *= .91 + .09*broad + .05*swell;
+                }
                 vec3 L = normalize(uSunDir);
                 vec3 V = normalize(uCameraPos - vWorldPos);
                 float ndotl = max(dot(N, L), 0.0);
