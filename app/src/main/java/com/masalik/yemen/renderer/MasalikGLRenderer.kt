@@ -439,6 +439,17 @@ class MasalikGLRenderer(
                     val bankTilt = (t.rollDeg * 0.0045f).coerceIn(-0.045f, 0.045f)
                     upX = rightX * bankTilt; upZ = rightZ * bankTilt
                 }
+                CameraMode.REVERSE -> {
+                    val spec = VehicleFleetCatalog.specOf(t.vehicleId)
+                    val mount = spec.bodyLengthM * .5f + .08f
+                    eyeX = t.posX - fwdX * mount
+                    eyeZ = t.posZ - fwdZ * mount
+                    eyeY = t.posY + spec.bodyHeightM * .65f
+                    targetX = eyeX - fwdX * 8f
+                    targetZ = eyeZ - fwdZ * 8f
+                    targetY = eyeY - 1.65f
+                    camInitialized = false
+                }
                 CameraMode.CHASE_FAR -> {
                     eyeX = t.posX - fwdX * 10.6f
                     eyeY = t.posY + 4.1f

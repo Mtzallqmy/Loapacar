@@ -50,6 +50,7 @@ enum class CameraMode(val labelAr: String, val subtitleAr: String = "") {
     CINEMATIC_ORBIT("مداري 360°", "منظور سينمائي قابل للدوران باللمس"),
     CHASE_FAR("تتبع واسع", "منظور بانورامي بعيد للطريق"),
     CINEMATIC_FRONT("أمامية", "لقطة سينمائية لمقدمة المركبة"),
+    REVERSE("كاميرا الرجوع", "رؤية من خلف المركبة لتسهيل الاصطفاف"),
     FREE_PHOTO("حرة 360°", "زاوية تصوير حرة")
 }
 

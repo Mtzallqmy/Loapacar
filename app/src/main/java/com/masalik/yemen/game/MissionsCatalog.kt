@@ -3,6 +3,7 @@ package com.masalik.yemen.game
 import java.time.LocalDate
 
 object MissionsCatalog {
+    const val PARKING_LESSON_ID = "mode_challenge_1"
 
     val STORY_CHAPTERS: List<StoryChapter> = listOf(
         StoryChapter(
@@ -158,9 +159,10 @@ object MissionsCatalog {
         var mCounter = 1
         for ((cat, prefix, recVeh) in modeDefinitions) {
             for (s in 0 until 8) {
-                val startM = (sectorStarts[s] + mCounter * 35f).coerceAtMost(20700f)
+                val parkingLesson = cat == GameModeCategory.CHALLENGE && s == 0
+                val startM = if (parkingLesson) 256f else (sectorStarts[s] + mCounter * 35f).coerceAtMost(20700f)
                 val spanM = 850f + (s % 4) * 260f
-                val endM = (startM + spanM).coerceAtMost(21940f)
+                val endM = if (parkingLesson) 268f else (startM + spanM).coerceAtMost(21940f)
                 val reg = RoadSplineNetwork.getRegionAt(startM).id
                 val weather = when (cat) {
                     GameModeCategory.RESCUE -> if (s % 2 == 0) WeatherPreset.HEAVY_RAIN else WeatherPreset.MOUNTAIN_FOG
@@ -172,8 +174,8 @@ object MissionsCatalog {
                 list.add(
                     MissionDefinition(
                         id = "mode_${cat.name.lowercase()}_${s + 1}",
-                        titleAr = "$prefix — ${sectorNames[s]} #${s + 1}",
-                        descriptionAr = "انطلق في مهمة ${cat.labelAr} عبر ${RoadSplineNetwork.getRegionAt(startM).nameAr} بطول ${"%.1f".format((endM - startM) / 1000f)} كم.",
+                        titleAr = if (parkingLesson) "تدريب الاصطفاف في سوق تعز" else "$prefix — ${sectorNames[s]} #${s + 1}",
+                        descriptionAr = if (parkingLesson) "تقدّم بهدوء إلى الإطار أمامك، أوقف السيارة داخله واسحب الجلنط لثانيتين." else "انطلق في مهمة ${cat.labelAr} عبر ${RoadSplineNetwork.getRegionAt(startM).nameAr} بطول ${"%.1f".format((endM - startM) / 1000f)} كم.",
                         category = cat,
                         chapterId = null,
                         regionId = reg,
@@ -182,9 +184,9 @@ object MissionsCatalog {
                         targetTimeSec = (((endM - startM) / 12f).toInt()).coerceIn(60, 180),
                         rewardCoins = 1400 + s * 320 + mCounter * 40,
                         rewardXp = 140 + s * 35,
-                        recommendedVehicleId = if (cat == GameModeCategory.PASSENGER && s % 2 == 1) VehicleId.MADINA else recVeh,
-                        weatherPreset = weather,
-                        timeOfDayPreset = time,
+                        recommendedVehicleId = if (parkingLesson) VehicleId.MADINA else if (cat == GameModeCategory.PASSENGER && s % 2 == 1) VehicleId.MADINA else recVeh,
+                        weatherPreset = if (parkingLesson) WeatherPreset.CLEAR else weather,
+                        timeOfDayPreset = if (parkingLesson) TimeOfDayPreset.MORNING else time,
                         hasAiRival = (cat == GameModeCategory.RACE),
                         aiRivalSpeedMs = 17.5f + s * 0.7f,
                         cargoRequiredPct = if (cat == GameModeCategory.CARGO) 80 else 0

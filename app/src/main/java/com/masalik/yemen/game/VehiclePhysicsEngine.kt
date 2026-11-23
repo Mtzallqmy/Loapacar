@@ -598,6 +598,17 @@ class VehiclePhysicsEngine {
         posY = roadHere.y + customization.rideHeightOffsetM
         headingRad = roadHere.headingRad + headingOffsetFromRoadRad
 
+        return telemetry(throttle, brake, input.handbrake, forces, livingWorld)
+    }
+
+    // Reading the pose for a menu, garage or relocated vehicle never advances simulation time.
+    fun telemetry(
+        throttle: Float = 0f,
+        brake: Float = 0f,
+        handbrake: Boolean = false,
+        forces: FloatArray? = null,
+        livingWorld: LivingWorldSimulation? = null
+    ): VehicleTelemetry {
         // Nearby POI / service station detection
         var nearServiceType: String? = null
         var nearServiceName: String? = null
@@ -640,12 +651,14 @@ class VehiclePhysicsEngine {
             realismMode = realismMode,
             throttle = throttle,
             brake = brake,
-            handbrake = input.handbrake,
+            handbrake = handbrake,
             steeringInputNorm = currentSteerInputNorm,
             steeringWheelAngleDeg = currentSteerInputNorm * (wheelRotationRangeDeg * 0.5f),
             driftSlipAngleDeg = driftSlipAngleDeg,
             suspensionBounceM = suspensionBounceM,
-            absActive = forces[3] > .5f, tcsActive = forces[4] > .5f, escActive = forces[5] > .5f,
+            absActive = forces != null && forces[3] > .5f,
+            tcsActive = forces != null && forces[4] > .5f,
+            escActive = forces != null && forces[5] > .5f,
             jobPayloadKg = jobPayloadKg, roadWetness = roadWetness,
             wheelHeights = suspension.contacts,
             roadCurvatureRadPerM = currentSample.curvatureRadPerM,

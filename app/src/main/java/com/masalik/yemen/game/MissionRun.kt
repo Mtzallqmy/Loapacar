@@ -70,8 +70,9 @@ class MissionRun(val mission: MissionDefinition, saved: MissionProgress? = null)
         }
         val spec = VehicleFleetCatalog.specOf(t.vehicleId)
         val relativeYaw = abs(kotlin.math.sin(headingOffset))
-        val halfLength = (spec.bodyLengthM + relativeYaw * spec.bodyWidthM) * .5f
-        val halfWidth = (spec.bodyWidthM + relativeYaw * spec.bodyLengthM) * .5f
+        val longitudinal = abs(cos(headingOffset))
+        val halfLength = (spec.bodyLengthM * longitudinal + relativeYaw * spec.bodyWidthM) * .5f
+        val halfWidth = (spec.bodyWidthM * longitudinal + relativeYaw * spec.bodyLengthM) * .5f
         val inZone = abs(t.distanceAlongRoadM - goal.distance) <= (if (goal.isStop) (6f-halfLength).coerceAtLeast(.8f) else 8f) &&
             abs(t.lateralOffsetM - goal.lane) <= (if (goal.isStop) (2.4f-halfWidth).coerceAtLeast(.35f) else 6f)
         val alignment = cos(headingOffset) * (if (goal.reverseRoute) -1f else 1f)
@@ -97,6 +98,8 @@ class MissionRun(val mission: MissionDefinition, saved: MissionProgress? = null)
             fun at(f: Float) = m.startDistanceM + (m.finishDistanceM - m.startDistanceM) * f
             fun stop(f: Float, kind: ObjectiveKind, label: String) = RoadObjective(at(f), 2.85f, kind, label)
             fun gate(f: Float) = RoadObjective(at(f), 2.85f, ObjectiveKind.GATE, "اعبر نقطة المسار بالاتجاه الصحيح")
+            if (m.id == MissionsCatalog.PARKING_LESSON_ID) return listOf(
+                RoadObjective(m.finishDistanceM, 34f, ObjectiveKind.PARK, "اصطف داخل الإطار ثم اسحب الجلنط"))
             if (m.id == "story_2") return listOf(
                 RoadObjective(230f, 34f, ObjectiveKind.LOAD, "سوق تعز · ادخل الشارع الموازي شرق الطريق وثبّت المركبة لتحميل البن"),
                 gate(.55f), stop(1f, ObjectiveKind.UNLOAD, "خزان المطل · ثبّت المركبة لتسليم البن"),

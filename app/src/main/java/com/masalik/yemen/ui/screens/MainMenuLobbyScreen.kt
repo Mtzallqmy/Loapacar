@@ -70,6 +70,7 @@ fun MainMenuLobbyScreen(
     saveState: SaveGameSchema,
     activeTimePhase: TimeOfDayPreset,
     onStartDriving: () -> Unit,
+    onParkingLesson: () -> Unit,
     onCycleDayNight: () -> Unit,
     onOpenWorldMap: () -> Unit,
     onOpenMissions: () -> Unit,
@@ -277,6 +278,13 @@ fun MainMenuLobbyScreen(
             }
 
             Spacer(Modifier.height(8.dp))
+
+            if (saveState.missionRun == null) {
+                Button(onClick = onParkingLesson, modifier = Modifier.fillMaxWidth().testTag("parking_lesson_button")) {
+                    Text("تدريب الاصطفاف في سوق تعز")
+                }
+                Spacer(Modifier.height(8.dp))
+            }
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 LobbyNavCard(

@@ -1212,6 +1212,7 @@ private fun CameraViewSwitcherPanel(
             CameraMode.CINEMATIC_ORBIT,
             CameraMode.CHASE_NEAR,
             CameraMode.CHASE_FAR,
+            CameraMode.REVERSE,
             CameraMode.CINEMATIC_FRONT
         )
     }

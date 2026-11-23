@@ -33,6 +33,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -160,6 +163,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun MasalikRootScreen(
     vm: MasalikGameViewModel,
@@ -222,7 +226,7 @@ private fun MasalikRootScreen(
         onDispose { onBindGLView(null) }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(MasalikObsidian)) {
+    Box(modifier = Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }.background(MasalikObsidian)) {
         // 1. Live Native 60fps OpenGL ES 3.0 3D Yemen World & Vehicle Surface
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -267,6 +271,10 @@ private fun MasalikRootScreen(
                     saveState = state.saveState,
                     activeTimePhase = state.activeTimePhase,
                     onStartDriving = { vm.setModal(ActiveModal.DRIVING) },
+                    onParkingLesson = {
+                        val catalog = com.masalik.yemen.game.MissionsCatalog
+                        vm.startMission(catalog.ALL_OFFLINE_MISSIONS.first { it.id == catalog.PARKING_LESSON_ID })
+                    },
                     onCycleDayNight = { vm.cycleQuickDayNight() },
                     onOpenWorldMap = { vm.setModal(ActiveModal.WORLD_MAP) },
                     onOpenMissions = { vm.setModal(ActiveModal.MISSIONS) },

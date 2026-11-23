@@ -116,8 +116,14 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     private var worldTimeHours: Float = 9.0f
     private var run: MissionRun? = null
     private var fixedRemainder = 0.0
-    private var previousTelemetry = VehicleTelemetry()
-    private var lastTelemetry = VehicleTelemetry()
+    private var lastTelemetry = physics.telemetry()
+    private var previousTelemetry = lastTelemetry
+
+    private fun snapToCurrentPose() {
+        lastTelemetry = physics.telemetry()
+        previousTelemetry = lastTelemetry
+        fixedRemainder = 0.0
+    }
     private val pendingSaves = kotlinx.coroutines.channels.Channel<SaveGameSchema>(kotlinx.coroutines.channels.Channel.UNLIMITED)
     private var missionElapsedSec: Float = 0f
     private var uiSyncAccumulator: Float = 0f
@@ -154,7 +160,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    private fun applySaveToEngines(save: SaveGameSchema) {
+    @Synchronized private fun applySaveToEngines(save: SaveGameSchema) {
         val custom = save.customizations[save.selectedVehicleId]
             ?: VehicleFleetCatalog.defaultCustomizations().getValue(save.selectedVehicleId)
         physics.selectVehicle(
@@ -177,6 +183,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         physics.resetToRoad(save.playerDistanceM, progress?.lateralM ?: 2.85f)
         physics.configureAiRival(mission?.hasAiRival == true, (progress?.rivalDistance ?: (save.playerDistanceM + 10f)) - 10f,
             mission?.aiRivalSpeedMs ?: 18f)
+        snapToCurrentPose()
         _uiState.update { it.copy(activeMission = mission) }
 
         audioEngine.mixer = save.audioMixer
@@ -575,6 +582,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             inputThrottle = 0f
             inputBrake = 0f
             inputSteerNorm = 0f
+            inputClutch = 0f
             audioEngine.hornActive = false
             saveSnapshotNow()
         }
@@ -617,7 +625,8 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         inputClutch = 0f
         run = MissionRun(mission)
         physics.weather = mission.weatherPreset
-        physics.resetToRoad(mission.startDistanceM)
+        physics.resetToRoad(mission.startDistanceM, if (mission.id == MissionsCatalog.PARKING_LESSON_ID) 34f else 2.55f)
+        snapToCurrentPose()
         physics.configureAiRival(mission.hasAiRival, mission.startDistanceM, mission.aiRivalSpeedMs)
         worldTimeHours = mission.timeOfDayPreset.hours
         missionElapsedSec = 0f
@@ -627,7 +636,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             weather = mission.weatherPreset,
             timeOfDay = mission.timeOfDayPreset,
             worldTimeHours = worldTimeHours,
-            missionRun = run?.snapshot(2.85f, physics.aiRivalDistanceM),
+            missionRun = run?.snapshot(physics.lateralOffsetM, physics.aiRivalDistanceM),
             playerDistanceM = mission.startDistanceM
         )
         commitSave(nextSave)
@@ -653,6 +662,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             return
         }
         physics.resetToRoad(city.distanceM)
+        snapToCurrentPose()
         physics.weather = city.defaultWeather
         worldTimeHours = city.defaultTimeOfDay.hours
         val current = _uiState.value.saveState
@@ -681,11 +691,12 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         showroomOrbitRad = (showroomOrbitRad + deltaRad) % (2f * kotlin.math.PI.toFloat())
     }
 
-    fun confirmSelectVehicle(id: VehicleId) {
+    @Synchronized fun confirmSelectVehicle(id: VehicleId) {
         val current = _uiState.value.saveState
         if (id !in current.unlockedVehicles) return
         val custom = current.customizations[id] ?: VehicleFleetCatalog.defaultCustomizations().getValue(id)
         physics.selectVehicle(id, custom, current.fuelByVehicle[id], current.damageByVehicle[id])
+        snapToCurrentPose()
         commitSave(current.copy(selectedVehicleId = id))
         _uiState.update { it.copy(previewVehicleId = id, toastMessageAr = "تم تجهيز مركبة «${VehicleFleetCatalog.specOf(id).nameAr}»") }
     }
@@ -702,6 +713,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         commitSave(updated)
         val custom = updated.customizations[id] ?: VehicleFleetCatalog.defaultCustomizations().getValue(id)
         physics.selectVehicle(id, custom, updated.fuelByVehicle[id], updated.damageByVehicle[id])
+        snapToCurrentPose()
         _uiState.update { it.copy(previewVehicleId = id, toastMessageAr = "مبارك! تم شراء مركبة «${spec.nameAr}»") }
     }
 
@@ -771,6 +783,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             CameraMode.CINEMATIC_ORBIT,
             CameraMode.CHASE_NEAR,
             CameraMode.CHASE_FAR,
+            CameraMode.REVERSE,
             CameraMode.CINEMATIC_FRONT
         )
         val cur = _uiState.value.cameraMode
@@ -859,7 +872,10 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             else -> a.copy(hdcEnabled = !a.hdcEnabled)
         }
     }
-    fun recoverVehicleOnRoad() = physics.resetToRoad(physics.distanceAlongRoadM, 2.85f)
+    @Synchronized fun recoverVehicleOnRoad() {
+        physics.resetToRoad(physics.distanceAlongRoadM, 2.85f)
+        snapToCurrentPose()
+    }
     fun setHornActive(active: Boolean) { audioEngine.hornActive = active }
 
     fun cycleQuickDayNight() {
