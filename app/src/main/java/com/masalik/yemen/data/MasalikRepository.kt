@@ -261,7 +261,15 @@ class MasalikRepository(
 
     fun importSaveJson(raw: String): Result<SaveGameSchema> = runCatching {
         require(raw.length <= 2_000_000) { "Backup too large" }
-        val decoded = json.decodeFromString<SaveGameSchema>(raw)
+        val document = json.parseToJsonElement(raw) as? kotlinx.serialization.json.JsonObject
+        require(document != null && ("schemaVersion" in document || "selectedVehicleId" in document)) { "Unknown backup format" }
+        val decoded = json.decodeFromJsonElement(SaveGameSchema.serializer(), document)
+        require(decoded.schemaVersion in 1..3 && decoded.selectedVehicleId in decoded.unlockedVehicles)
+        require(decoded.masalikCoins >= 0 && decoded.driverXp >= 0 && decoded.missionCompletions.values.all { it >= 0 })
+        decoded.missionRun?.let {
+            require(it.elapsed.isFinite() && it.elapsed >= 0f && it.lateralM.isFinite() &&
+                it.headingOffsetRad.isFinite() && it.cargoCondition in 0f..100f)
+        }
         require(decoded.playerDistanceM.isFinite() && decoded.worldTimeHours.isFinite()) { "Invalid numeric state" }
         require(decoded.missionBestTimesSec.values.all { it.isFinite() && it >= 0f }) { "Invalid mission record" }
         decoded.copy(

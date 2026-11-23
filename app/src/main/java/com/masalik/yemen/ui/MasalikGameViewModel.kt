@@ -128,6 +128,9 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     private var missionElapsedSec: Float = 0f
     private var uiSyncAccumulator: Float = 0f
     private var autoSaveAccumulator: Float = 0f
+    private var resumeFrame = true
+    private val frameTimes = FloatArray(600)
+    private var timingCount = 0
     private var fpsFrameCount: Int = 0
     private var fpsAccumulator: Float = 0f
     private var currentFps: Int = 60
@@ -180,7 +183,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         val mission = MissionsCatalog.ALL_OFFLINE_MISSIONS.firstOrNull { it.id == progress?.id }
         run = mission?.let { MissionRun(it, progress) }
         missionElapsedSec = run?.elapsed ?: 0f
-        physics.resetToRoad(save.playerDistanceM, progress?.lateralM ?: 2.85f)
+        physics.resetToRoad(save.playerDistanceM, progress?.lateralM ?: 2.85f, progress?.headingOffsetRad ?: 0f)
         physics.configureAiRival(mission?.hasAiRival == true, (progress?.rivalDistance ?: (save.playerDistanceM + 10f)) - 10f,
             mission?.aiRivalSpeedMs ?: 18f)
         snapToCurrentPose()
@@ -193,7 +196,8 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         audioEngine.weather = save.weather
     }
 
-    fun onResumeLifecycle() {
+    @Synchronized fun onResumeLifecycle() {
+        resumeFrame = true
         audioEngine.start()
         if (_uiState.value.saveState.hudSettings.controlMode == TouchControlMode.TILT) {
             gyroController.start()
@@ -217,19 +221,34 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     /** Called every frame on the OpenGL thread (~60fps) to step simulation & build render snapshot. */
-    @Synchronized fun stepSimulationFrame(dt: Float): MasalikGLRenderer.RenderFrameSnapshot {
+    @Synchronized fun stepSimulationFrame(frameSeconds: Float): MasalikGLRenderer.RenderFrameSnapshot {
+        val firstAfterResume = resumeFrame
+        resumeFrame = false
+        val dt = if (firstAfterResume) 0f else frameSeconds.coerceIn(0f, .12f)
         val state = _uiState.value
         val modal = state.activeModal
         val isDriving = modal == ActiveModal.DRIVING
         val isReplay = modal == ActiveModal.REPLAY
         val isLobbyOrGarage = modal == ActiveModal.MENU || modal == ActiveModal.GARAGE
 
-        fpsFrameCount++
-        fpsAccumulator += dt
-        if (fpsAccumulator >= 0.7f) {
-            currentFps = (fpsFrameCount / fpsAccumulator).toInt().coerceIn(15, 120)
-            fpsFrameCount = 0
-            fpsAccumulator = 0f
+        if (!firstAfterResume && frameSeconds > 0f) {
+            fpsFrameCount++
+            fpsAccumulator += frameSeconds
+            if (fpsAccumulator >= .7f) {
+                currentFps = (fpsFrameCount / fpsAccumulator).toInt()
+                fpsFrameCount = 0
+                fpsAccumulator = 0f
+            }
+            if (isDriving) {
+                frameTimes[timingCount++] = frameSeconds * 1000f
+                if (timingCount == frameTimes.size) {
+                    frameTimes.sort()
+                    android.util.Log.i("MyCarFrameTimes",
+                        "n=600 ms p50=${frameTimes[299]} p95=${frameTimes[569]} p99=${frameTimes[593]} max=${frameTimes.last()} " +
+                        "vehicle=${physics.vehicleId} quality=${state.saveState.graphicsQuality} weather=${physics.weather}")
+                    timingCount = 0
+                }
+            }
         }
 
         blinkerTimer += dt
@@ -543,6 +562,8 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         val updatedSave = current.copy(
             missionRun = null,
             playerDistanceM = physics.distanceAlongRoadM,
+            fuelByVehicle = current.fuelByVehicle + (physics.vehicleId to physics.fuelLiters),
+            damageByVehicle = current.damageByVehicle + (physics.vehicleId to physics.damage),
             masalikCoins = nextCoins,
             driverXp = nextXp,
             missionBestTimesSec = current.missionBestTimesSec + (mission.id to newBest),
@@ -636,7 +657,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             weather = mission.weatherPreset,
             timeOfDay = mission.timeOfDayPreset,
             worldTimeHours = worldTimeHours,
-            missionRun = run?.snapshot(physics.lateralOffsetM, physics.aiRivalDistanceM),
+            missionRun = run?.snapshot(physics.lateralOffsetM, physics.aiRivalDistanceM, physics.headingOffsetFromRoadRad),
             playerDistanceM = mission.startDistanceM
         )
         commitSave(nextSave)
@@ -1113,7 +1134,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     private fun saveSnapshotNow() {
         val cur = _uiState.value.saveState
         val updated = cur.copy(
-            missionRun = run?.snapshot(physics.lateralOffsetM, physics.aiRivalDistanceM),
+            missionRun = run?.snapshot(physics.lateralOffsetM, physics.aiRivalDistanceM, physics.headingOffsetFromRoadRad),
             worldTimeHours = worldTimeHours,
             timeOfDay = LivingWorldSimulation.hoursToPreset(worldTimeHours),
             playerDistanceM = physics.distanceAlongRoadM,

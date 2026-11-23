@@ -7,7 +7,7 @@ import kotlin.math.cos
 @Serializable
 data class MissionProgress(val id: String, val stage: Int = 0, val elapsed: Float = 0f,
                            val lateralM: Float = 2.85f, val cargoCondition: Float = 100f,
-                           val rivalDistance: Float? = null)
+                           val rivalDistance: Float? = null, val headingOffsetRad: Float = 0f)
 
 enum class ObjectiveKind { GATE, LOAD, UNLOAD, BOARD, ALIGHT, ATTACH, PARK }
 data class RoadObjective(val distance: Float, val lane: Float, val kind: ObjectiveKind,
@@ -45,7 +45,8 @@ class MissionRun(val mission: MissionDefinition, saved: MissionProgress? = null)
         private set
     val finished get() = stage == objectives.size
     val target get() = objectives.getOrNull(stage)
-    fun snapshot(lateral: Float, rival: Float?) = MissionProgress(mission.id, stage, elapsed, lateral, condition, rival)
+    fun snapshot(lateral: Float, rival: Float?, headingOffsetRad: Float = 0f) =
+        MissionProgress(mission.id, stage, elapsed, lateral, condition, rival, headingOffsetRad)
 
     fun advance(dt: Float, t: VehicleTelemetry, headingOffset: Float, impact: Float) {
         val goal = target ?: return

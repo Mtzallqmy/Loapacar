@@ -149,7 +149,7 @@ class VehiclePhysicsEngine {
         customization = custom
     }
 
-    fun resetToRoad(distanceM: Float, laneOffsetM: Float = 2.55f) {
+    fun resetToRoad(distanceM: Float, laneOffsetM: Float = 2.55f, headingOffset: Float = 0f) {
         distanceAlongRoadM = distanceM.coerceIn(10f, RoadSplineNetwork.TOTAL_ROAD_LENGTH_M - 20f)
         lateralOffsetM = laneOffsetM
         suspension.reset()
@@ -157,7 +157,7 @@ class VehiclePhysicsEngine {
         lastAcceleration = 0f
         forwardSpeedMs = 0f
         lateralSpeedMs = 0f
-        headingOffsetFromRoadRad = 0f
+        headingOffsetFromRoadRad = if (headingOffset.isFinite()) kotlin.math.atan2(sin(headingOffset), cos(headingOffset)) else 0f
         currentSteerInputNorm = 0f
         currentFrontSteerRad = 0f
         chassisPitchRad = 0f
@@ -382,7 +382,7 @@ class VehiclePhysicsEngine {
             brakeForceN += maxBrake * 0.85f
         }
         // Hill Descent Control
-        if (assists.hdcEnabled && sample.gradePct < -3.5f && forwardSpeedMs > 7.5f && throttle < 0.05f) {
+        if (assists.hdcEnabled && sample.gradePct * cos(headingOffsetFromRoadRad) < -3.5f && forwardSpeedMs > 7.5f && throttle < 0.05f) {
             brakeForceN += maxBrake * 0.35f
         }
 
@@ -393,7 +393,7 @@ class VehiclePhysicsEngine {
         brakeForceN = forces[1]
         // Gravity slope + Aero drag + Surface rolling resistance
         val slopeSin = (sample.gradePct / 100f).coerceIn(-0.28f, 0.28f)
-        val gravityForceN = -effectiveMassKg * 9.81f * slopeSin
+        val gravityForceN = -effectiveMassKg * 9.81f * slopeSin * cos(headingOffsetFromRoadRad)
         val surfaceRollMult = when (surface) {
             SurfaceType.ASPHALT -> 1.0f
             SurfaceType.DIRT -> 1.45f

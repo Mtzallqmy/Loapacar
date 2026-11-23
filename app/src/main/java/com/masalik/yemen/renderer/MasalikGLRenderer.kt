@@ -168,11 +168,12 @@ class MasalikGLRenderer(
 
     override fun onDrawFrame(gl: GL10?) {
         val now = System.nanoTime()
-        val dt = ((now - lastFrameNs) / 1_000_000_000f).coerceIn(0.005f, 0.05f)
+        val frameSeconds = (now - lastFrameNs) / 1_000_000_000f
+        val dt = frameSeconds.coerceIn(0f, 0.12f)
         lastFrameNs = now
         weatherAnimTime += dt
 
-        val snap = onStepFrame(dt)
+        val snap = onStepFrame(frameSeconds)
         frameQuality = snap.graphicsQuality
         val frameBudgetNs = 1_000_000_000L / snap.targetFps.coerceIn(30, 60)
         val sinceLastFrame = System.nanoTime() - frameStartNs
