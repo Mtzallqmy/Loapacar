@@ -257,13 +257,13 @@ fun DrivingHudOverlay(
                     HudIconPill(Icons.Default.Pause, "إيقاف مؤقت", "hud_pause_button") { vm.setModal(ActiveModal.PAUSE) }
                     HudTextPill(state.cameraMode.labelAr, Icons.Default.CameraAlt, "hud_camera_button") { cameraPickerOpen = !cameraPickerOpen }
 
-                    // 1-Tap Day / Sunset / Night Cycle Pill
+                    // Optional shortcuts live in the drawer so the road stays visible.
                     val timeIcon = when (state.activeTimePhase) {
                         TimeOfDayPreset.NIGHT -> Icons.Default.NightsStay
                         TimeOfDayPreset.SUNSET, TimeOfDayPreset.DAWN, TimeOfDayPreset.SUNRISE -> Icons.Default.WbTwilight
                         else -> Icons.Default.WbSunny
                     }
-                    HudTextPill(
+                    if (toolsDrawerOpen) HudTextPill(
                         label = state.activeTimePhase.labelAr,
                         icon = timeIcon,
                         tag = "hud_day_night_button",
@@ -285,7 +285,7 @@ fun DrivingHudOverlay(
                     ) { vm.toggleHeadlights() }
 
                     // 1-Tap Steering Style Switcher Pill (Gulf / European / JDM / Classic)
-                    HudTextPill(
+                    if (toolsDrawerOpen) HudTextPill(
                         label = hud.smartWheel.wheelStyle.shortLabelAr,
                         icon = Icons.Default.DirectionsCar,
                         tag = "hud_wheel_style_button"
@@ -296,9 +296,6 @@ fun DrivingHudOverlay(
                         vm.toggleAutoDrive()
                     }
                     HudIconPill(Icons.Default.Map, "خريطة اليمن", "hud_map_button") { vm.setModal(ActiveModal.WORLD_MAP) }
-                    HudIconPill(Icons.Default.Radio, "الراديو اليمني", "hud_radio_button", active = state.saveState.radioSettings.isPlaying) { vm.toggleRadioOpen() }
-                    HudIconPill(Icons.Default.SlowMotionVideo, "إعادة سينمائية 20ث", "hud_replay_button") { vm.enterReplayMode() }
-                    HudIconPill(Icons.Default.PhotoCamera, "وضع التصوير", "hud_photo_button") { vm.setModal(ActiveModal.PHOTO) }
                     HudIconPill(Icons.Default.Tune, "أدوات المركبة", "hud_tools_button", active = toolsDrawerOpen) { toolsDrawerOpen = !toolsDrawerOpen }
                     HudIconPill(Icons.Default.VisibilityOff, "إخفاء الواجهة", "hud_clean_button") { vm.toggleCleanHud() }
                 }
@@ -495,6 +492,11 @@ fun DrivingHudOverlay(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     ToolChip("السائق الآلي", state.autoDriveStatus != null) { vm.toggleAutoDrive() }
                     ToolChip(state.autoDriveStyle.labelAr, false) { vm.cycleAutoDriveStyle() }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    HudIconPill(Icons.Default.Radio, "الراديو اليمني", "hud_radio_button", active = state.saveState.radioSettings.isPlaying) { vm.toggleRadioOpen() }
+                    HudIconPill(Icons.Default.SlowMotionVideo, "إعادة سينمائية 20ث", "hud_replay_button") { vm.enterReplayMode() }
+                    HudIconPill(Icons.Default.PhotoCamera, "وضع التصوير", "hud_photo_button") { vm.setModal(ActiveModal.PHOTO) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     ToolChip("مصابيح: ${t.headlightBeamMode.labelAr}", t.headlightsOn) { vm.toggleHeadlights() }

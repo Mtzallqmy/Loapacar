@@ -20,7 +20,7 @@ object YemenJourneys {
                      weather: WeatherPreset, vararg stops: RoadObjective): YemenJourney {
         val mission = MissionDefinition(id, title, description, mode,
             regionId = RoadSplineNetwork.getRegionAt(start).id, startDistanceM = start,
-            finishDistanceM = stops.last().distance, targetTimeSec = 240, rewardCoins = 2400,
+            finishDistanceM = stops.maxOf { it.distance }, targetTimeSec = 240, rewardCoins = 2400,
             rewardXp = 220, recommendedVehicleId = vehicle, weatherPreset = weather,
             timeOfDayPreset = time, cargoRequiredPct = if (mode == GameModeCategory.CARGO) 80 else 0,
             dialogueBriefAr = stops.first().label)
@@ -35,13 +35,15 @@ object YemenJourneys {
             if (marketStreet) "journey_taiz_market" else "journey_taiz_main",
             if (marketStreet) "سوق تعز" else "صعود صبر",
             if (marketStreet) "بنّ السوق إلى مطلّ صبر" else "حمولة صبر · الطريق الرئيسي",
-            if (marketStreet) "مرّ بالشارع الضيّق أمام الدكاكين بعد التحميل، ثم اصعد إلى المطلّ."
-                else "اخرج عند أول تقاطع إلى الشارع الأوسع، ثم اصعد إلى المطلّ بالحمولة.",
+            if (marketStreet) "اعبر سوق البن ثم اصعد بالحمولة إلى المطلّ. عُد إلى المخزن بعد التسليم."
+                else "خذ الشارع الأوسع إلى المطلّ، ثم جرّب نزول صبر بالصندوق الفارغ.",
             110f, VehicleId.SAQR, GameModeCategory.CARGO, TimeOfDayPreset.MORNING, WeatherPreset.CLOUDY,
             RoadObjective(TAIZ_MARKET_M, MARKET_LANE, ObjectiveKind.LOAD, "مخزن البن · ادخل الشارع الشرقي الموازي وحمّل الأكياس"),
             route,
             RoadObjective(1380f, 2.85f, ObjectiveKind.GATE, "تابع صعود المنحدر إلى مطلّ جبل صبر"),
-            RoadObjective(SABIR_LOOKOUT_M, 2.85f, ObjectiveKind.UNLOAD, "مطلّ صبر · ثبّت السيارة وسلّم أكياس البن")
+            RoadObjective(SABIR_LOOKOUT_M, 2.85f, ObjectiveKind.UNLOAD, "مطلّ صبر · ثبّت السيارة وسلّم أكياس البن"),
+            RoadObjective(1450f, -2.85f, ObjectiveKind.GATE, "استدر حين يخلو الطريق وعُد إلى السوق بالصندوق الفارغ", reverseRoute = true),
+            RoadObjective(TAIZ_MARKET_M, MARKET_LANE, ObjectiveKind.PARK, "اصطف بجوار مخزن البن لإنهاء الرحلة", reverseRoute = true)
         )
     }
 

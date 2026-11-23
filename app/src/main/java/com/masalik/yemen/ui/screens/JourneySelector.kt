@@ -84,7 +84,9 @@ internal fun JourneySelector(onStart: (MissionDefinition) -> Unit, modifier: Mod
                 drawCircle(accent,3.dp.toPx(),Offset(x(fraction).coerceIn(3.dp.toPx(), size.width-3.dp.toPx()),y(elevations[idx])))
             }
         }
-        Text("ارتفاع الطريق · ${(m.finishDistanceM-m.startDistanceM).toInt()} م · ${m.timeOfDayPreset.labelAr}",
+        val distance = if (selected == 0) (m.finishDistanceM - m.startDistanceM) +
+            (m.finishDistanceM - journey.stops.last().distance) else m.finishDistanceM - m.startDistanceM
+        Text("ارتفاع الطريق · ${distance.toInt()} م · ${m.timeOfDayPreset.labelAr}",
             color=MasalikMuted,fontSize=10.sp)
         Button(onClick={ onStart(m) }, modifier=Modifier.fillMaxWidth(),
             colors=ButtonDefaults.buttonColors(containerColor=accent,contentColor=Color(0xFF10201A))) {

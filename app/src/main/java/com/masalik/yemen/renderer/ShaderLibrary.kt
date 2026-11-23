@@ -28,6 +28,7 @@ class ShaderLibrary {
     val uMetallic: Int
     val uRoughness: Int
     val uWetness: Int
+    val uPuddleStrength: Int
     val uHeadlightPos: Int
     val uHeadlightDir: Int
     val uHeadlightStrength: Int
@@ -69,6 +70,7 @@ class ShaderLibrary {
         uMetallic = GLES30.glGetUniformLocation(worldProgram, "uMetallic")
         uRoughness = GLES30.glGetUniformLocation(worldProgram, "uRoughness")
         uWetness = GLES30.glGetUniformLocation(worldProgram, "uWetness")
+        uPuddleStrength = GLES30.glGetUniformLocation(worldProgram, "uPuddleStrength")
         uHeadlightPos = GLES30.glGetUniformLocation(worldProgram, "uHeadlightPos")
         uHeadlightDir = GLES30.glGetUniformLocation(worldProgram, "uHeadlightDir")
         uHeadlightStrength = GLES30.glGetUniformLocation(worldProgram, "uHeadlightStrength")
@@ -162,6 +164,7 @@ class ShaderLibrary {
             uniform float uMetallic;
             uniform float uRoughness;
             uniform float uWetness;
+            uniform float uPuddleStrength;
             uniform vec3 uHeadlightPos;
             uniform vec3 uHeadlightDir;
             uniform float uHeadlightStrength;
@@ -190,20 +193,29 @@ class ShaderLibrary {
                 vec3 diffuse = albedo * uSunColor * (ndotl * uSunIntensity);
 
                 // PBR-inspired dual-lobe automotive clearcoat & wet asphalt specular
-                float effRough = clamp(uRoughness - uWetness * 0.35, 0.05, 0.96);
+                float surfaceWetness = uWetness;
+                if (uPuddleStrength > .01) {
+                    vec2 p = vWorldPos.xz;
+                    float basin = sin(dot(p,vec2(.34,.21))) * cos(dot(p,vec2(-.17,.62)));
+                    float edges = smoothstep(.48,.79,basin + .07*sin(dot(p,vec2(1.7,1.37))));
+                    float pooled = edges * uPuddleStrength;
+                    albedo *= 1.0 - pooled*.30;
+                    surfaceWetness = clamp(surfaceWetness + pooled*.58,0.0,1.0);
+                }
+                float effRough = clamp(uRoughness - surfaceWetness * 0.57, 0.05, 0.96);
                 float shininess = mix(190.0, 14.0, effRough);
                 vec3 H = normalize(L + V);
                 float ndoth = max(dot(N, H), 0.0);
                 float specPower = pow(ndoth, shininess);
                 float clearcoatSpec = pow(ndoth, 320.0) * (1.0 - effRough) * (0.45 + uMetallic * 0.65);
                 vec3 specCol = mix(vec3(1.0), albedo, uMetallic * 0.58);
-                float specStrength = mix(1.05, 0.10, effRough) * (0.48 + uMetallic * 0.90 + uWetness * 0.60);
+                float specStrength = mix(1.05, 0.10, effRough) * (0.48 + uMetallic * 0.90 + surfaceWetness * 0.60);
                 vec3 specular = uSunColor * (specCol * specPower * specStrength + vec3(1.0, 0.98, 0.95) * clearcoatSpec * 0.95) * (0.38 + uSunIntensity);
 
                 // Crisp Fresnel sky/horizon reflection on car paint, glass & wet asphalt
                 float fresnel = pow(1.0 - ndotv, 4.2);
                 vec3 envRefl = mix(uFogColor * 0.80, skyBounce * 1.25, clamp(reflect(-V, N).y * 0.5 + 0.5, 0.0, 1.0));
-                float reflAmount = (uMetallic * 0.62 + (1.0 - effRough) * 0.32 + uWetness * 0.25) * (0.20 + 0.80 * fresnel);
+                float reflAmount = (uMetallic * 0.62 + (1.0 - effRough) * 0.32 + surfaceWetness * 0.25) * (0.20 + 0.80 * fresnel);
 
                 // Real Dynamic Player Headlight Dual-Beam Cone Illumination (Low/High Beam)
                 vec3 headlightContrib = vec3(0.0);
@@ -219,7 +231,7 @@ class ShaderLibrary {
                         vec3 beamColor = vec3(1.0, 0.96, 0.86);
                         headlightContrib = albedo * beamColor * coneMask * atten * surfFacing * uHeadlightStrength * 2.45;
                         vec3 hlH = normalize(-fragDir + V);
-                        float hlSpec = pow(max(dot(N, hlH), 0.0), 42.0) * (0.28 + uWetness * 0.90);
+                        float hlSpec = pow(max(dot(N, hlH), 0.0), 42.0) * (0.28 + surfaceWetness * 0.90);
                         headlightContrib += beamColor * hlSpec * coneMask * atten * uHeadlightStrength * 1.15;
                     }
                 }

@@ -725,8 +725,10 @@ class MasalikGLRenderer(
                 else -> .91f
             })
             GLES30.glUniform1f(shaders.uWetness, if (finish.surface == SurfaceType.MUD) maxOf(.48f, wetness) else wetness)
+            GLES30.glUniform1f(shaders.uPuddleStrength, if (paved) ((wetness-.28f)*1.8f).coerceIn(0f,1f) else 0f)
             mesh.draw()
         }
+        GLES30.glUniform1f(shaders.uPuddleStrength, 0f)
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, textures.naturalRoads.getValue(SurfaceType.GRAVEL))
         GLES30.glUniform2f(shaders.uUvScale, 1f, 2.5f)
         GLES30.glUniform1f(shaders.uRoughness, .9f)
