@@ -85,25 +85,37 @@ adb("shell","pm","clear",NEW)
 open_app(NEW)
 settings()
 choose("استيراد نسخة محفوظة من الهاتف",scroll=True)
-# Show Downloads if the document provider starts in Recent.
-try:
-    choose("masalik_yemen_backup.masalik.json")
-except AssertionError:
-    choose("Show roots","Open navigation drawer","إظهار الجذور","إظهار المواقع")
-    choose("Downloads","التنزيلات")
-    choose("masalik_yemen_backup.masalik.json")
-# Wait through the system picker orientation change and selection animation.
-# A second tap is only sent while Android still owns the active document window.
-for _ in range(8):
+# Choose the actual document in Downloads. Recent may list the same document
+# via MediaProvider while Downloads uses the storage provider that created it.
+choose("Show roots","Open navigation drawer","إظهار الجذور","إظهار المواقع")
+choose("Downloads","التنزيلات")
+name="masalik_yemen_backup.masalik.json"
+choose(name)
+for attempt in range(8):
     visible=tree()
     if any(n.get("package")==NEW for n in visible):
         break
-    if any(n.get("text")=="masalik_yemen_backup.masalik.json" for n in visible):
-        choose("masalik_yemen_backup.masalik.json")
+    button=next((n for n in visible if n.get("text","").lower() in ("open","select","فتح","اختيار") and n.get("clickable")=="true"),None)
+    title=next((n for n in visible if n.get("text")==name),None)
+    if button is not None:
+        choose(button.get("text"))
+    elif title is not None:
+        x,y,r,b=map(int,re.findall(r"\d+",title.get("bounds","")))
+        pt=((x+r)//2,(y+b)//2)
+        if attempt==2:
+            adb("shell","input","touchscreen","swipe",*pt,*pt,750)
+        elif attempt==3:
+            adb("shell","input","keyevent","KEYCODE_ENTER")
+        else:
+            adb("shell","input","touchscreen","tap",*pt)
+            if attempt==1: adb("shell","input","touchscreen","tap",*pt)
     time.sleep(.7)
 else:
     (OUT/"select-failure.xml").write_bytes(adb("shell","cat","/sdcard/backup-ui.xml"))
-    raise AssertionError("System picker did not return the selected backup")
+    (OUT/"select-failure.png").write_bytes(adb("exec-out","screencap","-p"))
+    (OUT/"select-activity.txt").write_bytes(adb("shell","dumpsys","activity","activities"))
+    (OUT/"select-log.txt").write_bytes(adb("logcat","-d","-t","3000"))
+    raise AssertionError("System picker did not return the selected Downloads document")
 time.sleep(2)
 adb("shell","input","keyevent","KEYCODE_HOME")
 time.sleep(2)

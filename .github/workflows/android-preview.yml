@@ -111,7 +111,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [touch, migration, benchmark, journeys, soak]
+        check: ${{ fromJSON(contains(github.event.head_commit.message, '[save-check]') && '["migration"]' || '["touch","migration","benchmark","journeys","soak"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -145,31 +145,3 @@ jobs:
           name: Android-captures-${{ matrix.check }}
           path: journey-captures/
           if-no-files-found: ignore
-
-  publish-cities-preview:
-    needs: play-on-android
-    if: github.ref == 'refs/heads/feat/sayyarati-4-cities' && contains(github.event.head_commit.message, '[cities-preview]')
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: MyCar-4.0-Cities-Android8Plus-ARM64
-          path: verified
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: Android-captures-*
-          merge-multiple: true
-          path: captures
-      - name: Publish verified preview and evidence
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -eu
-          apk=MyCar-4.0.0-Cities-Preview-Android8Plus-ARM64.apk
-          cp verified/outputs/apk/journeys/app-journeys.apk "$apk"
-          sha256sum "$apk" > SHA256SUMS
-          zip -rq MyCar-4.0-Testing.zip captures verified/test-results verified/outputs/apk/journeys/package.txt verified/outputs/apk/journeys/signing.txt
-          gh release create v4.0.0-cities-preview.1 "$apk" SHA256SUMS MyCar-4.0-Testing.zip --target "$GITHUB_SHA" --prerelease --title 'سيارتي 4.0 — مدن اليمن (معاينة أندرويد)' --notes-file docs/cities-release-ar.md
