@@ -85,37 +85,37 @@ adb("shell","pm","clear",NEW)
 open_app(NEW)
 settings()
 choose("استيراد نسخة محفوظة من الهاتف",scroll=True)
-# Choose the actual document in Downloads. Recent may list the same document
-# via MediaProvider while Downloads uses the storage provider that created it.
+# Transfer the exact exported bytes to the device's Documents directory.
+# Read them through the storage provider, independent of the Download index.
+name="Masalik-3.4-Transfer.json"
+adb("shell","mkdir","-p","/sdcard/Documents")
+adb("push",OUT/"cities-legacy.json","/sdcard/Documents/"+name)
 choose("Show roots","Open navigation drawer","إظهار الجذور","إظهار المواقع")
-choose("Downloads","التنزيلات")
-name="masalik_yemen_backup.masalik.json"
-choose(name)
-for attempt in range(8):
+model=adb("shell","getprop","ro.product.model").decode().strip()
+choose(model,"Internal shared storage","Internal storage","وحدة التخزين الداخلية")
+choose("Documents","المستندات")
+for attempt in range(6):
     visible=tree()
     if any(n.get("package")==NEW for n in visible):
         break
-    button=next((n for n in visible if n.get("text","").lower() in ("open","select","فتح","اختيار") and n.get("clickable")=="true"),None)
-    title=next((n for n in visible if n.get("text")==name),None)
-    if button is not None:
-        choose(button.get("text"))
-    elif title is not None:
-        x,y,r,b=map(int,re.findall(r"\d+",title.get("bounds","")))
-        pt=((x+r)//2,(y+b)//2)
-        if attempt==2:
-            adb("shell","input","touchscreen","swipe",*pt,*pt,750)
-        elif attempt==3:
-            adb("shell","input","keyevent","KEYCODE_ENTER")
-        else:
-            adb("shell","input","touchscreen","tap",*pt)
-            if attempt==1: adb("shell","input","touchscreen","tap",*pt)
-    time.sleep(.7)
+    if attempt==1:
+        for n in visible:
+            if n.get("content-desc")=="List view":
+                choose("List view")
+                break
+    visible=tree()
+    for n in visible:
+        if not any(c.get("text")==name for c in n.iter("node")) or not n.get("resource-id","").endswith("/item_root"):
+            continue
+        x,y,r,b=map(int,re.findall(r"\d+",n.get("bounds","")))
+        tx=(x+r)//2 if r-x<500 else x+170
+        adb("shell","input","tap",tx,(y+b)//2)
+        break
+    time.sleep(.6)
 else:
     (OUT/"select-failure.xml").write_bytes(adb("shell","cat","/sdcard/backup-ui.xml"))
     (OUT/"select-failure.png").write_bytes(adb("exec-out","screencap","-p"))
-    (OUT/"select-activity.txt").write_bytes(adb("shell","dumpsys","activity","activities"))
-    (OUT/"select-log.txt").write_bytes(adb("logcat","-d","-t","3000"))
-    raise AssertionError("System picker did not return the selected Downloads document")
+    raise AssertionError("System picker did not return the selected document")
 time.sleep(2)
 adb("shell","input","keyevent","KEYCODE_HOME")
 time.sleep(2)

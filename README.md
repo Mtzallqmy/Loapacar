@@ -4,6 +4,16 @@ Arabic-first, offline Android driving game set on a fictional Yemen-inspired rou
 Kotlin runs the application and simulation, C and C++ implement the four-contact tire solver,
 OpenGL ES 3.0 renders the world, and Python generates the editable fleet shell meshes.
 
+## سيارتي 4.0 — مدن اليمن
+
+[تنزيل APK الموقّع لأندرويد 8 والأحدث، ARM64](https://github.com/Mtzallqmy/Loapacar/releases/download/v4.0.0-cities-preview.1/MyCar-4.0.0-Cities-Preview-Android8Plus-ARM64.apk) · [صفحة المعاينة](https://github.com/Mtzallqmy/Loapacar/releases/tag/v4.0.0-cities-preview.1)
+
+من «رحلات اليمن» اختر تعز، ثم «شارع السوق» أو «الشارع الرئيسي». اصطف في مخزن البن واستخدم زر التحميل. يمنحك طريق السوق تفريعة المدرجات قبل مطلّ صبر. بعد التسليم عُد إلى المخزن بالصندوق الفارغ. اختر عدن لتجربة «موعد المراكب» أو جرّب خط حافلة شبام ومفرق جبلة الممطر. من «أدوات المركبة» اختر وجهة ثم فعّل السائق الآلي. يستعيد اللاعب التحكم باستعمال المقود أو الدواسة.
+
+تُثبّت المعاينة بجانب نسخة المقصورة 3.4. افتح «قاعدة بيانات الهاتف» من إعدادات 3.4 لتصدير تقدمك، واستورد الملف من الإعدادات في 4.0. تعليمات البناء الخاصة بالنسخة المنشورة في [دليل المعاينة](docs/cities-release-ar.md)، والقياسات في [نتائج الاختبار](docs/cities-results-ar.md)، والمصادر في [سجل العمارة والخامات](docs/cities-art.md).
+
+برمجة وتطوير معتز العلقمي – تعز – اليمن – 2026م
+
 ## Play the Taiz delivery
 
 Open القصة والمهمات and choose the second mission in chapter one. Take the pickup to
@@ -13,7 +23,7 @@ Deliver the coffee and return to the marked market bay. The active stage is save
 and when pausing the game. The Control Studio contains the driver's seat and camera settings.
 Use Simulation realism to enable manual clutch stalling.
 
-## Build
+## Build the 3.1 preview variant
 
 Use JDK 21, Android SDK 36, NDK 28.2.13676358, CMake 3.22.1 and the Gradle wrapper.
 Host-side simulation tests also require a C/C++ compiler and CMake on PATH.
