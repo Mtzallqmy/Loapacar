@@ -7,6 +7,7 @@ permissions:
   contents: read
 jobs:
   test-and-build:
+    if: "!contains(github.event.head_commit.message, '[verify-cities-apk]')"
     runs-on: ubuntu-24.04
     timeout-minutes: 58
     steps:
@@ -64,8 +65,47 @@ jobs:
           path: emulator-apks/
           retention-days: 2
 
+  reuse-verified-build:
+    if: contains(github.event.head_commit.message, '[verify-cities-apk]')
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Confirm all shipped game sources and build inputs match the signed build
+        run: git diff --exit-code bda281b7a1cb270dc4ff651bdac7b938d1d501f9 HEAD -- . ':!.github/**' ':!scripts/**' ':!docs/**' ':!README.md'
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45481205985
+          name: emulator-apks
+          path: emulator-apks
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45481205985
+          name: MyCar-4.0-Cities-Android8Plus-ARM64
+          path: verified
+      - name: Verify the unchanged signed APK in both packages
+        run: |
+          echo "5fbda8279227d33c9b1eabc3cf43933adf824c3b7dbc74d6632efcdbd65567a6  verified/outputs/apk/journeys/app-journeys.apk" | sha256sum -c -
+          cmp verified/outputs/apk/journeys/app-journeys.apk emulator-apks/cities.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: emulator-apks
+          path: emulator-apks/
+          retention-days: 2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MyCar-4.0-Cities-Android8Plus-ARM64
+          path: verified/
+
   play-on-android:
-    needs: test-and-build
+    needs: [test-and-build, reuse-verified-build]
+    if: ${{ !cancelled() && (needs.test-and-build.result == 'success' || needs.reuse-verified-build.result == 'success') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 46
     strategy:

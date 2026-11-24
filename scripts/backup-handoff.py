@@ -40,7 +40,7 @@ def choose(*matches,scroll=False):
 
 def open_app(pkg):
     adb("shell","am","force-stop",pkg)
-    adb("shell","am","start","-W","-n",pkg+"/com.masalik.yemen.MainActivity")
+    adb("shell","am","start","-W","-f","0x10008000","-n",pkg+"/com.masalik.yemen.MainActivity")
 def settings():
     choose("lobby_settings_button","الإعدادات",scroll=True)
     choose("قاعدة بيانات الهاتف")
@@ -68,6 +68,8 @@ def export(name):
 
 adb("shell","wm","size","720x1280")
 adb("shell","wm","density","160")
+adb("shell","settings","put","system","accelerometer_rotation","0")
+adb("shell","settings","put","system","user_rotation","1")
 adb("shell","pm","clear",OLD)
 open_app(OLD)
 choose("تعز")
@@ -90,6 +92,18 @@ except AssertionError:
     choose("Show roots","Open navigation drawer","إظهار الجذور","إظهار المواقع")
     choose("Downloads","التنزيلات")
     choose("masalik_yemen_backup.masalik.json")
+# Wait through the system picker orientation change and selection animation.
+# A second tap is only sent while Android still owns the active document window.
+for _ in range(8):
+    visible=tree()
+    if any(n.get("package")==NEW for n in visible):
+        break
+    if any(n.get("text")=="masalik_yemen_backup.masalik.json" for n in visible):
+        choose("masalik_yemen_backup.masalik.json")
+    time.sleep(.7)
+else:
+    (OUT/"select-failure.xml").write_bytes(adb("shell","cat","/sdcard/backup-ui.xml"))
+    raise AssertionError("System picker did not return the selected backup")
 time.sleep(2)
 adb("shell","input","keyevent","KEYCODE_HOME")
 time.sleep(2)

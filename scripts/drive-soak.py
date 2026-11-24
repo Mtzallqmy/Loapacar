@@ -39,8 +39,20 @@ adb("shell","wm","size","720x1280"); adb("shell","wm","density","160")
 adb("shell","pm","clear",pkg)
 adb("logcat","-c")
 adb("shell","am","start","-W","-n",pkg+"/com.masalik.yemen.MainActivity")
-root=adb("shell","pm","path",pkg).decode().strip().split(":",1)[-1].rsplit("/",1)[0]
-(out/"installation.txt").write_text(pkg+"\n"+adb("shell","du","-sk",root).decode())
+paths=[line.removeprefix("package:") for line in adb("shell","pm","path",pkg).decode().splitlines()]
+root=paths[0].rsplit("/",1)[0]
+# The Google APIs emulator supports adb root. Production ADB shells may read
+# their installed APKs but cannot enumerate ART's private code directories.
+subprocess.run(["adb","root"],capture_output=True,timeout=20)
+adb("wait-for-device")
+usage=subprocess.run(["adb","shell","du","-sk",root],capture_output=True,text=True,timeout=20)
+if usage.returncode==0:
+    sizing=usage.stdout.strip()
+else:
+    sizes=[int(adb("shell","stat","-c","%s",p).decode().strip()) for p in paths]
+    sizing=f"{math.ceil(sum(sizes)/1024)} KiB installed APK files only"
+(out/"installation.txt").write_text(pkg+"\n"+sizing+"\n")
+print("Installed package",pkg,sizing,flush=True)
 journey("عدن")
 start=time.monotonic(); changed=False; finished=False; samples=[]; measured=set(); timestamps=[]; active="Aden"; events=[]
 next_time=start
