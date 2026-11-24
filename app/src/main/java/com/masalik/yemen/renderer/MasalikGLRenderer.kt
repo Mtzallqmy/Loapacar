@@ -346,6 +346,19 @@ class MasalikGLRenderer(
 
         drawYemeniCityEnvironment(centerDist, snap, atmo)
         if (!snap.isLobbyOrGarage) drawMarketStalls(centerDist, atmo)
+        if (snap.livingWorld.deliveryActive && abs(centerDist-199f)<220f) {
+            val bay=com.masalik.yemen.game.MarketDelivery
+            for (side in listOf(-1,1)) {
+                val s=RoadSplineNetwork.sampleAt(bay.distance+side*6f)
+                for (stripe in -4..4) {
+                    val lane=bay.lane+stripe*.84f
+                    drawOrientedBox(s.x+s.rightX*lane,s.y+.86f,s.z+s.rightZ*lane,s.headingRad,
+                        .84f,.37f,.16f,if(stripe%2==0) .85f else .94f,if(stripe%2==0) .32f else .88f,.57f)
+                    if (stripe%3==0) drawOrientedBox(s.x+s.rightX*lane,s.y+.49f,s.z+s.rightZ*lane,s.headingRad,
+                        .14f,.85f,.23f,.29f,.22f,.14f)
+                }
+            }
+        }
         drawTaizLandmarks(centerDist)
         drawRoundaboutsAndCrossStreets(centerDist, atmo)
         drawSpeedRadars(centerDist, atmo)
@@ -601,6 +614,25 @@ class MasalikGLRenderer(
             }
         }
 
+        if (snap.cameraMode==CameraMode.FREE_PHOTO && !snap.isReplayMode && !snap.isLobbyOrGarage) {
+            val anchor=RoadSplineNetwork.sampleAt(t.distanceAlongRoadM)
+            // Trace the camera boom across the same public space used for driving.
+            val deltaX=eyeX-targetX; val deltaY=eyeY-targetY; val deltaZ=eyeZ-targetZ
+            for (i in 1..16) {
+                val fraction=i/16f
+                val xx=targetX+deltaX*fraction; val zz=targetZ+deltaZ*fraction
+                val d=t.distanceAlongRoadM+(xx-t.posX)*sin(anchor.headingRad)+(zz-t.posZ)*cos(anchor.headingRad)
+                val section=RoadSplineNetwork.sampleAt(d)
+                val lane=(xx-section.x)*section.rightX+(zz-section.z)*section.rightZ
+                val constrained=com.masalik.yemen.game.CityStreetNetwork.constrain(d,lane,section.widthM*.5f+2.8f)
+                val floor=RoadSplineNetwork.terrainHeightAt(xx,zz,section,lane)
+                if ((section.isUrbanStreet && constrained.hitBoundary) || targetY+deltaY*fraction<floor+.3f) {
+                    val limit=(i-1)/16f
+                    eyeX=targetX+deltaX*limit; eyeZ=targetZ+deltaZ*limit; eyeY=maxOf(targetY+deltaY*limit,floor+.4f)
+                    break
+                }
+            }
+        }
         currentCamX = eyeX
         currentCamY = eyeY
         currentCamZ = eyeZ

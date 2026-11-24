@@ -48,12 +48,18 @@ def export(name):
     choose("android:id/button1","SAVE","Save","حفظ")
     for _ in range(15):
         files=adb("shell","find","/sdcard/Download","-type","f").decode().splitlines()
-        backup=next((f for f in files if "masalik_yemen_backup" in f),None)
+        backup=next((f for f in sorted(files, key=lambda v: ("(" in v),reverse=True) if "masalik_yemen_backup" in f),None)
         if backup:
             raw=adb("shell","cat",backup)
             try: state=json.loads(raw)
             except (ValueError,UnicodeError):time.sleep(.5);continue
-            adb("shell","mv",backup,"/sdcard/Download/"+name)
+            if name=="cities-restored.json" and "pedalExponent" not in state["hudSettings"]:
+                for n in tree():
+                    if n.get("text","").lower() in ("replace","استبدال","yes","نعم"):
+                        x,y,r,b=map(int,re.findall(r"\d+",n.attrib["bounds"]))
+                        adb("shell","input","tap",(x+r)//2,(y+b)//2)
+                time.sleep(.5)
+                continue
             (OUT/name).write_bytes(raw)
             return state
         time.sleep(1)
@@ -78,11 +84,11 @@ settings()
 choose("استيراد نسخة محفوظة من الهاتف",scroll=True)
 # Show Downloads if the document provider starts in Recent.
 try:
-    choose("cities-legacy.json")
+    choose("masalik_yemen_backup.masalik.json")
 except AssertionError:
     choose("Show roots","Open navigation drawer","إظهار الجذور","إظهار المواقع")
     choose("Downloads","التنزيلات")
-    choose("cities-legacy.json")
+    choose("masalik_yemen_backup.masalik.json")
 time.sleep(2)
 adb("shell","input","keyevent","KEYCODE_HOME")
 time.sleep(2)

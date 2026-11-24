@@ -114,6 +114,7 @@ class LivingWorldSimulation {
 
     val trafficVehicles: MutableList<TrafficVehicleAgent> = mutableListOf()
     val pedestrians: MutableList<PedestrianAgent> = mutableListOf()
+    var deliveryActive = false
     val parkedCars: List<ParkedCarPlacement>
     val trafficSignals: List<TrafficSignalRuntime> =
         RoadSplineNetwork.TRAFFIC_INTERSECTIONS.map { TrafficSignalRuntime(it) }
@@ -480,6 +481,7 @@ class LivingWorldSimulation {
             }
 
             val sample = RoadSplineNetwork.sampleAt(car.distanceM)
+            val useTerraces = car.id % 5 == 2 && car.distanceM in SabirRoad.start..SabirRoad.end
             val isEmergency = car.type == TrafficVehicleType.POLICE || car.type == TrafficVehicleType.AMBULANCE
             var targetSpeed = car.baseSpeedMs * if (sample.isUrbanStreet && !isEmergency) 0.78f else 1.0f
 
@@ -495,7 +497,12 @@ class LivingWorldSimulation {
 
             // Dynamic AI Lane Changing with Blinking Turn Signals on Modern 4-Lane Boulevards & Roundabouts
             val nearRoundabout = RoadSplineNetwork.ROUNDABOUTS.any { abs(it.distanceM - car.distanceM) < 22f }
-            if (nearRoundabout) {
+            if (useTerraces) {
+                val offset=SabirRoad.offset(car.distanceM)
+                car.targetLaneOffsetM=offset+car.direction*1.65f
+                targetSpeed=minOf(targetSpeed,7.2f)
+                car.turnSignalDir=if (abs(offset)<5f) -car.direction else 0
+            } else if (nearRoundabout) {
                 car.targetLaneOffsetM = car.direction * 6.4f
                 car.turnSignalDir = car.direction
             } else {
@@ -525,7 +532,7 @@ class LivingWorldSimulation {
             car.laneOffsetM += (car.targetLaneOffsetM - car.laneOffsetM).coerceIn(-2.2f * dt, 2.2f * dt)
 
             // Rule A: Stop cleanly at RED or YELLOW traffic signals before the crosswalk (Emergency may cruise cautiously)
-            if (!isEmergency) {
+            if (!isEmergency && abs(car.laneOffsetM)<sample.widthM*.5f+1f) {
                 for (sig in trafficSignals) {
                     val distToStopLine = (sig.def.distanceM - car.distanceM) * car.direction - 4.8f
                     if (distToStopLine in -1.5f..36f) {
@@ -538,7 +545,7 @@ class LivingWorldSimulation {
 
             // Rule B: Yield to any pedestrian currently on the road ahead
             for (ped in pedestrians) {
-                if (ped.isCrosswalkPedestrian && abs(ped.lateralOffsetM) < sample.widthM * 0.5f + 0.2f) {
+                if (ped.isCrosswalkPedestrian && abs(car.laneOffsetM) < sample.widthM * .5f && abs(ped.lateralOffsetM) < sample.widthM * 0.5f + 0.2f) {
                     val ahead = (ped.distanceM - car.distanceM) * car.direction
                     if (ahead in 2f..22f) {
                         targetSpeed = 0f

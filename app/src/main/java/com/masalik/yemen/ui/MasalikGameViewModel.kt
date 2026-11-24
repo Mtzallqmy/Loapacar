@@ -69,6 +69,7 @@ data class MasalikUiState(
     val cleanCinematicHud: Boolean = false,
     val previewVehicleId: VehicleId = VehicleId.SHAHIQ,
     val activeMission: MissionDefinition? = null,
+    val deliveryActive: Boolean = false,
     val destination: DriveDestination? = null,
     val autoDriveStyle: AutoDriveStyle = AutoDriveStyle.SCENIC,
     val autoDriveStatus: AutoDriveStatus? = null,
@@ -124,6 +125,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
 
     private var worldTimeHours: Float = 9.0f
     private var run: MissionRun? = null
+    private var cameraBeforePhoto = CameraMode.CHASE_NEAR
     private var driverRoute: DriverRoute? = null
     private val autoDriver = AutoDriver()
     private var autoDriveStatus: AutoDriveStatus? = null
@@ -381,6 +383,12 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             worldTimeHours = (worldTimeHours + dt * 0.045f) % 24f
         }
 
+        val loading = com.masalik.yemen.game.MarketDelivery.closeAt(worldTimeHours, physics.distanceAlongRoadM, physics.lateralOffsetM, livingWorld.deliveryActive)
+        if (loading != livingWorld.deliveryActive) {
+            livingWorld.deliveryActive=loading
+            if (autoDriveStatus != null) planRoute()
+            _uiState.update { it.copy(deliveryActive=loading) }
+        }
         val atmo = LivingWorldSimulation.sampleAtmosphere(worldTimeHours, state.saveState.weather)
 
         val telemetry: VehicleTelemetry
@@ -678,7 +686,14 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         if (modal == ActiveModal.SETTINGS) {
             refreshDbStats()
         }
-        _uiState.update { it.copy(activeModal = modal) }
+        val old=_uiState.value
+        if (modal==ActiveModal.PHOTO && old.activeModal!=ActiveModal.PHOTO) cameraBeforePhoto=old.cameraMode
+        val camera=when {
+            modal==ActiveModal.PHOTO -> CameraMode.FREE_PHOTO
+            old.activeModal==ActiveModal.PHOTO -> cameraBeforePhoto
+            else -> old.cameraMode
+        }
+        _uiState.update { it.copy(activeModal = modal,cameraMode=camera) }
     }
 
     private fun recordCurrentTripIfSignificant() {
@@ -987,7 +1002,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     private fun planRoute() {
         val stop = run?.target
         val goal = if (stop != null) MapPoint(stop.distance,stop.lane) else _uiState.value.destination?.point
-        driverRoute = goal?.let { DriverRoute(MapPoint(physics.distanceAlongRoadM,physics.lateralOffsetM),it) }
+        driverRoute = goal?.let { DriverRoute(MapPoint(physics.distanceAlongRoadM,physics.lateralOffsetM),it,livingWorld.deliveryActive) }
     }
 
     @Synchronized fun cycleAutoDriveStyle() {

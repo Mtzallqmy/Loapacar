@@ -455,6 +455,7 @@ fun DrivingHudOverlay(
             if (hud.showMinimap) {
                 GpsMinimapCard(
                     distanceM = t.distanceAlongRoadM, lateral = t.lateralOffsetM, heading = t.headingRad,
+                    loading = state.deliveryActive,
                     target = if (state.activeMission != null) MapPoint(state.objectiveM,state.objectiveLane) else state.destination?.point,
                     expanded = minimapExpanded,
                     onToggleExpand = { minimapExpanded = !minimapExpanded }
@@ -969,9 +970,9 @@ private fun PhotoModeOverlay(
 }
 
 @Composable
-private fun GpsMinimapCard(distanceM: Float, lateral: Float, heading: Float, target: MapPoint?, expanded: Boolean, onToggleExpand: () -> Unit) {
-    val route = remember((distanceM / 8).toInt(), (lateral / 3).toInt(), target) {
-        if (target != null) StreetNavigation.route(MapPoint(distanceM,lateral),target) else emptyList()
+private fun GpsMinimapCard(distanceM: Float, lateral: Float, heading: Float, target: MapPoint?, loading: Boolean, expanded: Boolean, onToggleExpand: () -> Unit) {
+    val route = remember((distanceM / 8).toInt(), (lateral / 3).toInt(), target, loading) {
+        if (target != null) StreetNavigation.route(MapPoint(distanceM,lateral),target,loading) else emptyList()
     }
     val sizeDp = if (expanded) 160.dp else 98.dp
     Column(
@@ -1031,6 +1032,8 @@ private fun GpsMinimapCard(distanceM: Float, lateral: Float, heading: Float, tar
             }
             for (street in StreetNavigation.streets) if (street.a.l != 0f || street.b.l != 0f)
                 segment(street.a,street.b,MasalikMuted,2f)
+            if (loading && kotlin.math.abs(distanceM-com.masalik.yemen.game.MarketDelivery.distance)<270f)
+                drawCircle(MasalikCrimson,4f,point(com.masalik.yemen.game.MarketDelivery.distance,com.masalik.yemen.game.MarketDelivery.lane))
             route.zipWithNext { a,b -> segment(a,b,MasalikEmerald,3f) }
             target?.let { drawCircle(MasalikAmber,4f,point(it.d,it.l)) }
             val here = point(distanceM,lateral)

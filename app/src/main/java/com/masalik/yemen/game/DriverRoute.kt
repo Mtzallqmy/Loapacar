@@ -14,9 +14,11 @@ object DriveDestinations {
 }
 
 /** Sample the same streets shown by GPS into right-hand lanes. Progress is local to the last fix. */
-internal class DriverRoute(start: MapPoint, val goal: MapPoint) {
+internal class DriverRoute(start: MapPoint, val goal: MapPoint, deliveryActive: Boolean=false) {
+    private val streets=StreetNavigation.route(start,goal,deliveryActive)
+    val reachable get() = streets.isNotEmpty()
     private val samples = buildList {
-        val center = StreetNavigation.route(start,goal).drop(1).dropLast(1).fold(mutableListOf<MapPoint>()) { dst,p ->
+        val center = streets.drop(1).dropLast(1).fold(mutableListOf<MapPoint>()) { dst,p ->
             if (dst.lastOrNull() != p) dst.add(p)
             dst
         }

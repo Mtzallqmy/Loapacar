@@ -34,6 +34,7 @@ internal class AutoDriver {
     }
 
     fun step(car: VehiclePhysicsEngine, world: LivingWorldSimulation, style: AutoDriveStyle, route: DriverRoute? = null, stopAtGoal: Boolean = true): AutoDriveCommand {
+        if (route?.reachable == false) return AutoDriveCommand(ControlInputs(brake=.88f),AutoDriveStatus.BLOCKED)
         if (car.forwardSpeedMs < -.08f) {
             return AutoDriveCommand(ControlInputs(brake = .85f), AutoDriveStatus.HOLDING)
         }

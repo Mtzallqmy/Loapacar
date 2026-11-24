@@ -33,14 +33,18 @@ object StreetNavigation {
             main.zipWithNext { a,b -> add(MapStreet(MapPoint(a,0f),MapPoint(b,0f))) }
         }
     }
-    fun route(start: MapPoint, goal: MapPoint): List<MapPoint> {
+    fun route(start: MapPoint, goal: MapPoint, deliveryActive: Boolean=false): List<MapPoint> {
+        if (deliveryActive && MarketDelivery.inBay(goal.d,goal.l)) return emptyList()
         val source = streets.minBy { it.project(start).distance(start) }
         val dest = streets.minBy { it.project(goal).distance(goal) }
         val from = source.project(start)
         val to = dest.project(goal)
-        if (source == dest) return listOf(start,from,to,goal)
+        fun connects(a: MapPoint,b: MapPoint): Boolean =
+            !deliveryActive || !MarketDelivery.blocks(MapStreet(a,b))
+        if (source == dest && connects(from,to)) return listOf(start,from,to,goal)
         val edges = mutableMapOf<MapPoint,MutableList<MapPoint>>()
         fun link(a: MapPoint,b: MapPoint) {
+            if (!connects(a,b)) return
             edges.getOrPut(a) { mutableListOf() }.add(b)
             edges.getOrPut(b) { mutableListOf() }.add(a)
         }

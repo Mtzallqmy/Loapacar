@@ -5,6 +5,17 @@ import org.junit.Test
 import kotlin.math.abs
 
 class CitiesDriveTest {
+    @Test fun morningDeliveryHasAnOpenDetourAndWillNotSpawnOnThePlayer() {
+        val a=MapPoint(180f,-34f); val b=MapPoint(219f,-34f)
+        assertTrue(MarketDelivery.closeAt(9f,60f,2f,false))
+        assertFalse(MarketDelivery.closeAt(9f,199f,-34f,false))
+        val short=StreetNavigation.route(a,b)
+        val diversion=StreetNavigation.route(a,b,true)
+        assertTrue(diversion.size>short.size)
+        assertTrue(diversion.zipWithNext().none { MarketDelivery.blocks(MapStreet(it.first,it.second)) })
+        assertTrue(StreetNavigation.route(a,MapPoint(199f,-34f),true).isEmpty())
+    }
+
     @Test fun followsTerracesAndStopsAtSelectedDestination() {
         val car=VehiclePhysicsEngine()
         car.resetToRoad(1300f,SabirRoad.offset(1300f)+1.65f)

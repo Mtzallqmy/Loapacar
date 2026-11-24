@@ -505,6 +505,14 @@ class VehiclePhysicsEngine {
             }
         }
 
+        if (livingWorld?.deliveryActive==true && MarketDelivery.inBay(distanceAlongRoadM,lateralOffsetM,spec.bodyLengthM*.5f)) {
+            val side = if (prevDist < MarketDelivery.distance) -1f else 1f
+            distanceAlongRoadM=MarketDelivery.distance+side*(6.1f+spec.bodyLengthM*.5f)
+            if (abs(forwardSpeedMs)>2.2f) applyCollisionDamage(abs(forwardSpeedMs))
+            forwardSpeedMs=0f
+            lateralSpeedMs=0f
+        }
+
         // Gentle central roundabout monument curb deflection so player flows cleanly around the Yemeni fountain plaza
         for (rb in RoadSplineNetwork.ROUNDABOUTS) {
             if (abs(distanceAlongRoadM - rb.distanceM) < 4.8f && abs(lateralOffsetM) < 3.8f) {
