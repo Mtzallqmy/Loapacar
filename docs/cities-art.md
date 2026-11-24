@@ -11,3 +11,7 @@ Visual references (reference only, retained by their respective owners):
 - https://whc.unesco.org/document/152951 — massing and small openings in Shibam mud towers.
 - https://commons.wikimedia.org/wiki/File:Port_of_Aden,_Yemen_from_ISS.jpg — bay and waterfront orientation.
 - https://commons.wikimedia.org/wiki/Category:Agricultural_terraces_in_Yemen — stepped upland terrain.
+
+Vehicle class comparison: Toyota UK's Hilux technical sheet lists a 3.085 m wheelbase and 500 Nm at 1600–2800 RPM for the 2.8 automatic. The fictional Saqr uses 3.08 m, 480 Nm and a simulated torque peak at about 1935 RPM. Stopping distances and acceleration figures in the test output are simulator measurements. https://media.toyota.co.uk/wp-content/uploads/sites/5/pdf/220419M-Hilux-Tech-Spec.pdf
+
+The game inherits the established SUMO and CARLA design references in taiz-and-driving-references.md. The implementation, traffic rules and test routes in this update were written for this game.

@@ -15,6 +15,7 @@ android {
 
     defaultConfig {
         applicationId = "com.masalik.yemen"
+        testInstrumentationRunner = "com.masalik.yemen.TouchDriveProbe"
         minSdk = 26
         targetSdk = 36
         versionCode = 10

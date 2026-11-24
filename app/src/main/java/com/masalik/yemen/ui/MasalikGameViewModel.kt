@@ -704,7 +704,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     @Synchronized fun startMission(mission: MissionDefinition) {
         stopAutoDrive()
         val current = _uiState.value.saveState
-        val chosenVehicle = if (mission.id == "journey_shibam_bus" || mission.recommendedVehicleId in current.unlockedVehicles) {
+        val chosenVehicle = if (mission.id.startsWith("journey_") || mission.recommendedVehicleId in current.unlockedVehicles) {
             mission.recommendedVehicleId
         } else current.selectedVehicleId
 
