@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
@@ -31,6 +33,7 @@ jobs:
           cp signed/outputs/apk/journeys/app-journeys.apk "$apk"
           echo "$APK_SHA  $apk" > SHA256SUMS
           sha256sum -c SHA256SUMS
+          git diff --exit-code "$BINARY_COMMIT" HEAD -- . ':!.github/**' ':!scripts/**' ':!docs/**' ':!README.md'
           cat docs/cities-release-ar.md docs/cities-results-ar.md > "$RUNNER_TEMP/notes.md"
           if gh release view "$tag" >/dev/null 2>&1; then
             mkdir -p downloaded
@@ -38,7 +41,7 @@ jobs:
             (cd downloaded && sha256sum -c ../SHA256SUMS)
             gh release edit "$tag" --notes-file "$RUNNER_TEMP/notes.md"
           else
-            gh release create "$tag" "$apk" SHA256SUMS --target "$BINARY_COMMIT" --prerelease --title 'سيارتي 4.0 — مدن اليمن (معاينة أندرويد)' --notes-file "$RUNNER_TEMP/notes.md"
+            gh release create "$tag" "$apk" SHA256SUMS --target "$GITHUB_SHA" --prerelease --title 'سيارتي 4.0 — مدن اليمن (معاينة أندرويد)' --notes-file "$RUNNER_TEMP/notes.md"
           fi
           mkdir -p proof
           cp -r signed/test-results proof/
