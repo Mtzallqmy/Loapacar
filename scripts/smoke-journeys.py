@@ -36,6 +36,27 @@ def find_label(label, click=False):
 def capture(name):
     (out / f"{name}.png").write_bytes(adb("exec-out","screencap","-p"))
 
+def cockpit(slug, vehicle, weather, city, night=False):
+    adb("shell","pm","clear",package)
+    adb("shell","am","start","-W","-n",package+"/com.masalik.yemen.MainActivity",
+        "--ez","masalik_test_cockpit","true","--es","masalik_test_vehicle",vehicle,
+        "--es","masalik_test_city",city,"--es","masalik_test_weather",weather,
+        "--ez","masalik_test_night",str(night).lower())
+    find_label("أدوات المركبة")
+    if weather == "HEAVY_RAIN":
+        find_label("أدوات المركبة",click=True)
+        find_label("المسّاحات · تلقائية",click=True)
+        find_label("المسّاحات · تشغيل",click=True)
+        find_label("المسّاحات · إيقاف")
+        find_label("أدوات المركبة",click=True)
+        capture(slug+"-parked")
+        find_label("أدوات المركبة",click=True)
+        find_label("المسّاحات · إيقاف",click=True)
+        find_label("المسّاحات · تلقائية")
+        find_label("أدوات المركبة",click=True)
+    capture(slug)
+    print(f"Rendered {vehicle} cockpit in {weather}",flush=True)
+
 try:
     adb("shell","wm","size","720x1280")
     adb("shell","wm","density","160")
@@ -53,6 +74,9 @@ try:
     find_label("إيقاف السائق الآلي",click=True)
     find_label("تشغيل السائق الآلي")
     print("Activated and released the automatic driver from the driving HUD",flush=True)
+    cockpit("cockpit-tourer-night","SHAHIQ","CLEAR","city_taiz_sabir",night=True)
+    cockpit("cockpit-pickup-rain","SAQR","HEAVY_RAIN","city_ibb_green")
+    cockpit("cockpit-sedan","MADINA","CLEAR","city_sanaa_old")
     for slug, place, objective in [
         ("taiz-market","تعز","مخزن البن · ادخل الشارع الشرقي الموازي وحمّل الأكياس"),
         ("taiz-main","تعز","مخزن البن · ادخل الشارع الشرقي الموازي وحمّل الأكياس"),

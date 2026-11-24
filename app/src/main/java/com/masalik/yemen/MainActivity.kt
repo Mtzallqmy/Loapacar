@@ -100,6 +100,9 @@ class MainActivity : ComponentActivity() {
                 override fun run() {
                     if (!viewModel.uiState.value.profileReady) { testHandler.postDelayed(this, 500L); return }
 
+                intent.getStringExtra("masalik_test_vehicle")?.let { name ->
+                    runCatching { com.masalik.yemen.game.VehicleId.valueOf(name) }.getOrNull()?.let { viewModel.confirmSelectVehicle(it) }
+                }
                 intent.getStringExtra("masalik_test_city")?.let { id ->
                     com.masalik.yemen.game.RoadSplineNetwork.YEMEN_CITY_HUBS.firstOrNull { it.id == id }?.let { viewModel.fastTravelToCity(it) }
                 }

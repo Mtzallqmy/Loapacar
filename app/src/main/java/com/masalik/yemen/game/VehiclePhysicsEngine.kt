@@ -92,7 +92,7 @@ class VehiclePhysicsEngine {
         set(value) {
             headlightBeamMode = if (value) HeadlightBeamMode.LOW_BEAM else HeadlightBeamMode.OFF
         }
-    var wipersOn: Boolean = false
+    var wiperMode: WiperMode = WiperMode.AUTO
     var leftIndicatorOn: Boolean = false
     var rightIndicatorOn: Boolean = false
     var cruiseControlEnabled: Boolean = false
@@ -540,12 +540,13 @@ class VehiclePhysicsEngine {
 
         suspensionBounceM = suspension.heave
 
-        // Auto-sweep wipers in rain or when manually switched on
-        if (wipersOn || weather == WeatherPreset.LIGHT_RAIN || weather == WeatherPreset.HEAVY_RAIN) {
+        // A stopped motor completes the current sweep and parks along the lower edge.
+        val wipersRequested = wiperMode.active(weather)
+        if (wipersRequested || wiperPhaseRad > 0f) {
             val wipeSpeed = if (weather == WeatherPreset.HEAVY_RAIN) 5.8f else 3.6f
-            wiperPhaseRad = (wiperPhaseRad + dt * wipeSpeed) % (2f * PI.toFloat())
-        } else {
-            wiperPhaseRad += (0f - wiperPhaseRad) * (dt * 6f).coerceAtMost(1f)
+            val sweep = 2f * PI.toFloat()
+            val phase = wiperPhaseRad + dt * wipeSpeed
+            wiperPhaseRad = if (!wipersRequested && phase >= sweep) 0f else phase % sweep
         }
 
         // RPM calculation
@@ -646,7 +647,8 @@ class VehiclePhysicsEngine {
             engineRunning = engineRunning,
             headlightsOn = headlightsOn,
             headlightBeamMode = headlightBeamMode,
-            wipersOn = wipersOn || weather == WeatherPreset.LIGHT_RAIN || weather == WeatherPreset.HEAVY_RAIN,
+            wipersOn = wiperMode.active(weather) || wiperPhaseRad > 0f,
+            wiperMode = wiperMode,
             wiperPhaseRad = wiperPhaseRad,
             leftIndicatorOn = leftIndicatorOn,
             rightIndicatorOn = rightIndicatorOn,

@@ -50,7 +50,8 @@ class ParticleAndMirrorEngine {
 
     // Genuine OpenGL ES 3.0 Rear-View Mirror Framebuffer Object
     private var mirrorFbo = 0
-    private var mirrorColorTex = 0
+    internal var mirrorColorTex = 0
+        private set
     private var mirrorDepthRbo = 0
     val mirrorWidth = 320
     val mirrorHeight = 96

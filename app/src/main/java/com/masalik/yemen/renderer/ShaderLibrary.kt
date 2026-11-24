@@ -29,6 +29,7 @@ class ShaderLibrary {
     val uRoughness: Int
     val uWetness: Int
     val uPuddleStrength: Int
+    val uUnlit: Int
     val uWaterTime: Int
     val uHeadlightPos: Int
     val uHeadlightDir: Int
@@ -72,6 +73,7 @@ class ShaderLibrary {
         uRoughness = GLES30.glGetUniformLocation(worldProgram, "uRoughness")
         uWetness = GLES30.glGetUniformLocation(worldProgram, "uWetness")
         uPuddleStrength = GLES30.glGetUniformLocation(worldProgram, "uPuddleStrength")
+        uUnlit = GLES30.glGetUniformLocation(worldProgram, "uUnlit")
         uWaterTime = GLES30.glGetUniformLocation(worldProgram, "uWaterTime")
         uHeadlightPos = GLES30.glGetUniformLocation(worldProgram, "uHeadlightPos")
         uHeadlightDir = GLES30.glGetUniformLocation(worldProgram, "uHeadlightDir")
@@ -167,6 +169,7 @@ class ShaderLibrary {
             uniform float uRoughness;
             uniform float uWetness;
             uniform float uPuddleStrength;
+            uniform float uUnlit;
             uniform float uWaterTime;
             uniform vec3 uHeadlightPos;
             uniform vec3 uHeadlightDir;
@@ -178,6 +181,10 @@ class ShaderLibrary {
                 vec4 texSample = texture(uTexture, vTexCoord);
                 float alpha = uBaseColor.a * mix(1.0, texSample.a, uUseTexture);
                 if (alpha < 0.04) discard;
+                if (uUnlit > 0.5) {
+                    fragColor = texSample * uBaseColor;
+                    return;
+                }
                 vec3 albedo = mix(uBaseColor.rgb, uBaseColor.rgb * texSample.rgb, uUseTexture);
 
                 vec3 N = normalize(vNormal);

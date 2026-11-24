@@ -78,6 +78,11 @@ class MasalikGLRenderer(
     )
 
     private var frameStartNs: Long = 0L
+    private lateinit var cabinDisplays: CabinDisplays
+    private lateinit var mirrorGlass: GpuMesh
+    private val cabinShells = mutableMapOf<Pair<CabinLayout, Int>, Map<CabinGeometry.Material, GpuMesh>>()
+    private val windshields = mutableMapOf<CabinLayout, GpuMesh>()
+    private val instrumentPanels = mutableMapOf<CabinLayout, GpuMesh>()
     private lateinit var shaders: ShaderLibrary
     private lateinit var textures: ProceduralTextures
     private lateinit var roundedMesh: GpuMesh
@@ -139,6 +144,11 @@ class MasalikGLRenderer(
         GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
 
         shaders = ShaderLibrary()
+        cabinDisplays = CabinDisplays()
+        mirrorGlass = GpuMesh(CabinGeometry.panel(.299f, .095f, mirror = true))
+        cabinShells.clear()
+        windshields.clear()
+        instrumentPanels.clear()
         bodies.clear()
         canopies.clear()
         palmMeshes = JourneyScenery.roadsideTree(true).mapValues { GpuMesh(it.value) }
@@ -262,8 +272,8 @@ class MasalikGLRenderer(
         renderWorldScenePass(snap, atmo, centerDist, isMirrorPass = false)
 
         // Composite Live Chrome-Framed Rear-View Mirror HUD directly on top of the 3D scene
-        if (showLiveMirror) {
-            fxEngine.drawMirrorOverlay(shaders, skyVboId, isCockpit = snap.cameraMode == CameraMode.COCKPIT)
+        if (showLiveMirror && snap.cameraMode != CameraMode.COCKPIT) {
+            fxEngine.drawMirrorOverlay(shaders, skyVboId, isCockpit = false)
         }
         if (!firstFrameReported) { firstFrameReported = true; onFirstFrame() }
     }
@@ -336,7 +346,9 @@ class MasalikGLRenderer(
                 ((!snap.isReplayMode && snap.cameraMode == CameraMode.COCKPIT) ||
                     (snap.isReplayMode && snap.replayCameraAngle == ReplayCameraAngle.COCKPIT))
             if (showCockpit) {
-                drawCockpitInterior(t, drawCustom, snap.wheelStyle, snap.seatSide, atmo)
+                drawCockpitInterior(t, drawCustom, snap.wheelStyle, snap.seatSide, atmo,
+                    snap.weather, snap.blinkerOn, !snap.isReplayMode && snap.rearMirrorEnabled &&
+                        frameQuality != com.masalik.yemen.game.GraphicsQuality.LOW)
             } else {
                 drawDetailedPlayerVehicle(t, drawVehicleId, drawCustom, snap.blinkerOn, atmo)
             }
@@ -440,12 +452,13 @@ class MasalikGLRenderer(
                     targetZ = t.posZ
                 }
                 ReplayCameraAngle.COCKPIT -> {
-                    val seatSign = if (snap.seatSide == DriverSeatSide.LEFT_HAND) -1f else 1f
-                    eyeX = t.posX + fwdX * 0.16f + rightX * (seatSign * 0.38f)
-                    eyeY = t.posY + 1.40f
-                    eyeZ = t.posZ + fwdZ * 0.16f + rightZ * (seatSign * 0.38f)
+                    val cabin = CabinLayout.of(t.vehicleId)
+                    val driver = if (snap.seatSide == DriverSeatSide.LEFT_HAND) -1f else 1f
+                    eyeX = t.posX + fwdX * cabin.seatZ + rightX * (driver * cabin.driverX)
+                    eyeY = t.posY + cabin.seatY
+                    eyeZ = t.posZ + fwdZ * cabin.seatZ + rightZ * (driver * cabin.driverX)
                     targetX = eyeX + fwdX * 26f
-                    targetY = eyeY - 0.38f
+                    targetY = eyeY - 2.55f
                     targetZ = eyeZ + fwdZ * 26f
                 }
             }
@@ -494,15 +507,17 @@ class MasalikGLRenderer(
                     camInitialized = false
                 }
                 CameraMode.COCKPIT -> {
-                    // Authentic Left-Hand Drive vs Right-Hand Drive driver eye position with G-force shift!
-                    val seatSign = if (snap.seatSide == DriverSeatSide.LEFT_HAND) -1f else 1f
-                    val gLongShift = (-t.throttle * 0.055f + t.brake * 0.065f).coerceIn(-0.07f, 0.08f)
-                    eyeX = t.posX + fwdX * (0.16f + snap.controls.seatDepthM + gLongShift * snap.controls.cameraMotion) + rightX * (seatSign * 0.38f)
-                    eyeY = t.posY + 1.40f + snap.controls.seatHeightM + t.suspensionBounceM * .72f * snap.controls.cameraMotion
-                    eyeZ = t.posZ + fwdZ * (0.16f + snap.controls.seatDepthM + gLongShift * snap.controls.cameraMotion) + rightZ * (seatSign * 0.38f)
-                    targetX = eyeX + fwdX * 28f + rightX * (steerApexLook * 1.45f)
-                    targetY = eyeY - 0.40f + t.pitchDeg * 0.032f
-                    targetZ = eyeZ + fwdZ * 28f + rightZ * (steerApexLook * 1.45f)
+                    val cabin = CabinLayout.of(t.vehicleId)
+                    val driver = if (snap.seatSide == DriverSeatSide.LEFT_HAND) -1f else 1f
+                    val gLongShift = (-t.throttle * .055f + t.brake * .065f) * snap.controls.cameraMotion
+                    val fore = cabin.seatZ + snap.controls.seatDepthM + gLongShift
+                    eyeX = t.posX + fwdX * fore + rightX * (driver * cabin.driverX)
+                    eyeY = t.posY + cabin.seatY + snap.controls.seatHeightM +
+                        t.suspensionBounceM * .72f * snap.controls.cameraMotion
+                    eyeZ = t.posZ + fwdZ * fore + rightZ * (driver * cabin.driverX)
+                    targetX = eyeX + fwdX * 28f + rightX * steerApexLook
+                    targetY = eyeY - 2.70f + t.pitchDeg * .084f
+                    targetZ = eyeZ + fwdZ * 28f + rightZ * steerApexLook
                     val cockpitRoll = (t.rollDeg * 0.0085f * snap.controls.cameraMotion).coerceIn(-0.075f, 0.075f)
                     upX = rightX * cockpitRoll; upZ = rightZ * cockpitRoll
                     camInitialized = false
@@ -2092,154 +2107,141 @@ class MasalikGLRenderer(
         }
     }
 
-    /** Procedural first-person cabin, with driver limbs and an open windshield aperture. */
     private fun drawCockpitInterior(
         t: VehicleTelemetry,
         custom: VehicleCustomization,
         wheelStyle: SteeringWheelStyle,
         seatSide: DriverSeatSide,
-        atmo: AtmosphereSnapshot
+        atmo: AtmosphereSnapshot,
+        weather: WeatherPreset,
+        blinker: Boolean,
+        liveMirror: Boolean
     ) {
+        val cabin = CabinLayout.of(t.vehicleId)
+        val driverSign = if (seatSide == DriverSeatSide.LEFT_HAND) -1 else 1
+        val seatX = cabin.driverX * driverSign
         val fwdX = sin(t.headingRad); val fwdZ = cos(t.headingRad)
         val rightX = cos(t.headingRad); val rightZ = -sin(t.headingRad)
-        val seatSign = if (seatSide == DriverSeatSide.LEFT_HAND) -1f else 1f
-        val parsed = runCatching { Color.parseColor(custom.paintColorHex) }.getOrDefault(Color.rgb(200, 114, 54))
-
-        // Windshield aperture remains clear: frame only, no opaque glass plane across the view.
-        drawOrientedBox(t.posX + fwdX * 0.86f, t.posY + 2.00f, t.posZ + fwdZ * 0.86f,
-            t.headingRad, 1.84f, 0.12f, 0.15f, 0.12f, 0.13f, 0.15f)
-        drawOrientedBox(t.posX - fwdX * 0.10f, t.posY + 0.48f, t.posZ - fwdZ * 0.10f,
-            t.headingRad, 1.72f, 0.08f, 1.42f, 0.08f, 0.09f, 0.10f)
-        // Door tops and inner trim make the driver's location legible without blocking the road.
-        for (side in intArrayOf(-1, 1)) {
-            drawOrientedBox(t.posX + rightX * side * 0.88f, t.posY + 1.05f,
-                t.posZ + rightZ * side * 0.88f, t.headingRad,
-                0.10f, 0.40f, 1.48f, 0.11f, 0.12f, 0.14f)
+        val y = t.posY + t.suspensionBounceM * .65f
+        val yaw = t.headingRad * 180f / PI.toFloat()
+        fun mount(localX: Float, localY: Float, localZ: Float) {
+            Matrix.setIdentityM(modelMatrix, 0)
+            Matrix.translateM(modelMatrix, 0, t.posX + rightX * localX + fwdX * localZ,
+                y + localY, t.posZ + rightZ * localX + fwdZ * localZ)
+            Matrix.rotateM(modelMatrix, 0, yaw, 0f, 1f, 0f)
+        }
+        val parts = cabinShells.getOrPut(cabin to driverSign) {
+            CabinGeometry.bake(cabin, driverSign).mapValues { GpuMesh(it.value) }
+        }
+        mount(0f, 0f, 0f)
+        val lamp = .038f + atmo.nightFactor * .046f
+        for ((material, mesh) in parts) {
+            drawMeshWithCurrentMatrix(mesh, material.r, material.g, material.b,
+                textures.whiteTex, 0f, 1f, 1f, lamp, lamp * .86f, lamp * .72f,
+                material.metal, material.roughness)
         }
 
-        // 1. Sculpted Metallic Hood visible through windshield
-        drawOrientedMesh(
-            slopedBodyMesh,
-            t.posX + fwdX * 1.65f, t.posY + 1.02f, t.posZ + fwdZ * 1.65f,
-            t.headingRad, 0f, 0f, 1.74f, 0.24f, 1.65f,
-            Color.red(parsed) / 255f, Color.green(parsed) / 255f, Color.blue(parsed) / 255f,
-            metallic = 0.72f, roughness = 0.16f
-        )
-
-        val bus = t.vehicleId == VehicleId.HAFILAT || t.vehicleId == VehicleId.QAFILA
-        val utility = t.vehicleId in listOf(VehicleId.SAQR, VehicleId.NIMR, VehicleId.JABAL, VehicleId.SHAHIQ, VehicleId.BADIYA)
-        if (bus) {
-            // Passenger grab pole and fare shelf visible from both seat positions.
-            for (side in listOf(.71f,.82f)) drawOrientedBox(t.posX + rightX*side*seatSign, t.posY+1.42f,
-                t.posZ + rightZ*side*seatSign, t.headingRad,.038f,1.15f,.038f,.86f,.62f,.13f)
-        } else if (utility) {
-            val grip = -seatSign*.48f
-            drawOrientedBox(t.posX + fwdX*.76f + rightX*grip,t.posY+1.23f,t.posZ + fwdZ*.76f + rightZ*grip,
-                t.headingRad,.42f,.055f,.065f,.40f,.37f,.30f)
-        }
-        // 2. Sculpted Soft-Touch Leather Dashboard + Wood/Carbon Trim Strip
-        drawOrientedBox(t.posX + fwdX * 0.84f, t.posY + 1.04f, t.posZ + fwdZ * 0.84f, t.headingRad, 1.80f, 0.38f, 0.48f, 0.09f, 0.10f, 0.12f, metallic = 0.15f, roughness = 0.65f)
-        val (trimR, trimG, trimB) = when (wheelStyle) {
-            SteeringWheelStyle.GULF_YEMENI, SteeringWheelStyle.CLASSIC_HERITAGE -> Triple(0.42f, 0.22f, 0.10f) // Polished Walnut Wood
-            SteeringWheelStyle.EUROPEAN_LUXURY -> Triple(0.72f, 0.76f, 0.82f) // Brushed Aluminum
-            SteeringWheelStyle.JAPANESE_SPORT -> Triple(0.75f, 0.12f, 0.14f)  // Racing Red Carbon Accent
-        }
-        drawOrientedBox(
-            t.posX + fwdX * 0.64f, t.posY + 1.12f, t.posZ + fwdZ * 0.64f,
-            t.headingRad, 1.72f, 0.055f, 0.06f, trimR, trimG, trimB, metallic = 0.65f, roughness = 0.20f,
-            emR = if (wheelStyle == SteeringWheelStyle.EUROPEAN_LUXURY) 0.15f else 0f,
-            emG = if (wheelStyle == SteeringWheelStyle.EUROPEAN_LUXURY) 0.35f else 0f,
-            emB = if (wheelStyle == SteeringWheelStyle.EUROPEAN_LUXURY) 0.55f else 0f
-        )
-
-        // 3. Glowing Virtual Cockpit Digital Cluster (directly ahead of LHD/RHD driver) + Center Infotainment Tablet
-        val clusterX = t.posX + fwdX * 0.72f + rightX * (seatSign * 0.38f)
-        val clusterZ = t.posZ + fwdZ * 0.72f + rightZ * (seatSign * 0.38f)
-        drawOrientedBox(clusterX, t.posY + 1.18f, clusterZ, t.headingRad, 0.46f, 0.15f, 0.05f, 0.12f, 0.74f, 0.96f, emR = 0.22f, emG = 0.64f, emB = 0.90f)
-        drawOrientedBox(t.posX + fwdX * 0.74f, t.posY + 1.22f, t.posZ + fwdZ * 0.74f, t.headingRad, 0.34f, 0.20f, 0.04f, 0.12f, 0.20f, 0.28f, emR = 0.38f, emG = 0.26f, emB = 0.08f)
-
-        // 4. Windshield A-Pillars & Top Rear-View Mirror
-        for (side in intArrayOf(-1, 1)) {
-            drawOrientedBox(
-                t.posX + fwdX * 0.86f + rightX * (side * 0.84f), t.posY + 1.56f, t.posZ + fwdZ * 0.86f + rightZ * (side * 0.84f),
-                t.headingRad, 0.09f, 0.90f, 0.11f, 0.11f, 0.12f, 0.14f
-            )
-        }
-        drawOrientedBox(t.posX + fwdX * 0.78f, t.posY + 1.78f, t.posZ + fwdZ * 0.78f, t.headingRad, 0.30f, 0.08f, 0.05f, 0.14f, 0.18f, 0.24f, metallic = 0.9f, roughness = 0.05f)
-
-        // 5. Animated Sweeping Windshield Wipers!
-        if (t.wipersOn || abs(t.wiperPhaseRad) > 0.02f) {
-            val sweepDeg = 12f + (sin(t.wiperPhaseRad) * 0.5f + 0.5f) * 68f
-            for (wOff in floatArrayOf(-0.32f, 0.22f)) {
-                Matrix.setIdentityM(modelMatrix, 0)
-                Matrix.translateM(modelMatrix, 0, t.posX + fwdX * 1.02f + rightX * wOff, t.posY + 1.22f, t.posZ + fwdZ * 1.02f + rightZ * wOff)
-                Matrix.rotateM(modelMatrix, 0, t.headingRad * 180f / PI.toFloat(), 0f, 1f, 0f)
-                Matrix.rotateM(modelMatrix, 0, -sweepDeg, 0f, 0f, 1f)
-                Matrix.translateM(modelMatrix, 0, 0f, 0.28f, 0f)
-                Matrix.scaleM(modelMatrix, 0, 0.025f, 0.56f, 0.025f)
-                drawMeshWithCurrentMatrix(cubeMesh, 0.08f, 0.09f, 0.10f, textures.whiteTex, 0f, 1f, 1f, 0f, 0f, 0f, 0.2f, 0.5f)
-            }
+        if (cabin != CabinLayout.COMMERCIAL) {
+            val color = runCatching { Color.parseColor(custom.paintColorHex) }.getOrDefault(Color.rgb(200, 114, 54))
+            mount(0f, cabin.cowl - .235f, cabin.glassBaseZ + .38f)
+            Matrix.scaleM(modelMatrix, 0, cabin.width * .94f, .24f, 1.44f)
+            drawMeshWithCurrentMatrix(slopedBodyMesh, Color.red(color) / 255f, Color.green(color) / 255f,
+                Color.blue(color) / 255f, textures.whiteTex, 0f, 1f, 1f, 0f, 0f, 0f, .64f, .23f)
         }
 
-        // 6. Sculpted 3D Rotating Steering Wheel matching Selected Style (Eastern / European / Sport / Classic)
-        val swX = t.posX + fwdX * 0.58f + rightX * (seatSign * 0.38f)
-        val swY = t.posY + 1.15f
-        val swZ = t.posZ + fwdZ * 0.58f + rightZ * (seatSign * 0.38f)
-        val ringMesh = if (wheelStyle == SteeringWheelStyle.EUROPEAN_LUXURY) steerRingFlat else steerRingRound
-        val (rimR, rimG, rimB) = when (wheelStyle) {
-            SteeringWheelStyle.GULF_YEMENI -> Triple(0.46f, 0.24f, 0.11f)
-            SteeringWheelStyle.EUROPEAN_LUXURY -> Triple(0.14f, 0.16f, 0.20f)
-            SteeringWheelStyle.JAPANESE_SPORT -> Triple(0.12f, 0.13f, 0.16f)
-            SteeringWheelStyle.CLASSIC_HERITAGE -> Triple(0.56f, 0.30f, 0.12f)
+        val cluster = instrumentPanels.getOrPut(cabin) {
+            GpuMesh(CabinGeometry.panel(cabin.clusterWidth, .192f))
         }
-        Matrix.setIdentityM(modelMatrix, 0)
-        Matrix.translateM(modelMatrix, 0, swX, swY, swZ)
-        Matrix.rotateM(modelMatrix, 0, t.headingRad * 180f / PI.toFloat(), 0f, 1f, 0f)
-        Matrix.rotateM(modelMatrix, 0, 16f, 1f, 0f, 0f)
-        Matrix.rotateM(modelMatrix, 0, -t.steeringWheelAngleDeg, 0f, 0f, 1f)
-        Matrix.scaleM(modelMatrix, 0, 0.38f, 0.38f, 0.38f)
-        drawMeshWithCurrentMatrix(ringMesh, rimR, rimG, rimB, textures.whiteTex, 0f, 1f, 1f, 0.05f * atmo.nightFactor, 0.04f * atmo.nightFactor, 0f, 0.05f, 0.80f)
+        mount(seatX, cabin.clusterY, cabin.clusterZ - .057f)
+        drawCabinTexture(cluster, cabinDisplays.cluster(cabin, t, blinker, weatherAnimTime), opaque = true)
 
-        // Spokes & Center Boss
-        Matrix.setIdentityM(modelMatrix, 0)
-        Matrix.translateM(modelMatrix, 0, swX, swY, swZ)
-        Matrix.rotateM(modelMatrix, 0, t.headingRad * 180f / PI.toFloat(), 0f, 1f, 0f)
-        Matrix.rotateM(modelMatrix, 0, 16f, 1f, 0f, 0f)
-        Matrix.rotateM(modelMatrix, 0, -t.steeringWheelAngleDeg, 0f, 0f, 1f)
-        Matrix.scaleM(modelMatrix, 0, 0.32f, 0.06f, 0.05f)
-        drawMeshWithCurrentMatrix(cubeMesh, trimR, trimG, trimB, textures.whiteTex, 0f, 1f, 1f, 0f, 0f, 0f, 0.72f, 0.22f)
-        drawFirstPersonDriver(t, seatSign, swX, swY, swZ)
+        val wheel = if (wheelStyle == SteeringWheelStyle.EUROPEAN_LUXURY) steerRingFlat else steerRingRound
+        val timber = wheelStyle == SteeringWheelStyle.GULF_YEMENI || wheelStyle == SteeringWheelStyle.CLASSIC_HERITAGE
+        fun mountWheel() {
+            mount(seatX, cabin.wheelY, cabin.wheelZ)
+            Matrix.rotateM(modelMatrix, 0, 16f, 1f, 0f, 0f)
+            Matrix.rotateM(modelMatrix, 0, -t.steeringWheelAngleDeg, 0f, 0f, 1f)
+        }
+        mountWheel()
+        Matrix.scaleM(modelMatrix, 0, cabin.wheelSize, cabin.wheelSize, cabin.wheelSize)
+        drawMeshWithCurrentMatrix(wheel, if (timber) .44f else .145f, if (timber) .24f else .16f,
+            if (timber) .116f else .18f, textures.whiteTex, 0f, 1f, 1f, .035f, .030f, .025f, .04f, .65f)
+        mountWheel()
+        Matrix.scaleM(modelMatrix, 0, cabin.wheelSize * .90f, .053f, .034f)
+        drawMeshWithCurrentMatrix(roundedMesh, .32f, .34f, .36f, textures.whiteTex, 0f, 1f, 1f,
+            .042f, .037f, .03f, .46f, .38f)
+        mountWheel()
+        Matrix.translateM(modelMatrix, 0, 0f, -.032f, -.022f)
+        Matrix.scaleM(modelMatrix, 0, .133f, .115f, .045f)
+        drawMeshWithCurrentMatrix(roundedMesh, .102f, .107f, .111f, textures.whiteTex, 0f, 1f, 1f,
+            .04f, .034f, .028f, .10f, .64f)
+        drawFirstPersonDriver(t, cabin, seatX, y)
+
+        val glass = windshields.getOrPut(cabin) {
+            GpuMesh(CabinGeometry.panel(cabin.width * .954f, cabin.roof - cabin.cowl - .055f,
+                cabin.glassBaseZ - .015f, cabin.glassTopZ + .020f))
+        }
+        val rainAmount = when (weather) {
+            WeatherPreset.HEAVY_RAIN -> if (frameQuality == com.masalik.yemen.game.GraphicsQuality.LOW) .57f else 1f
+            WeatherPreset.LIGHT_RAIN -> .38f
+            else -> 0f
+        }
+        mount(0f, (cabin.cowl + cabin.roof) * .5f, 0f)
+        drawCabinTexture(glass, cabinDisplays.windshield(rainAmount, t.speedKmh, t.wiperPhaseRad,
+            weatherAnimTime), opaque = false)
+
+        if (liveMirror && fxEngine.mirrorFboReady) {
+            val mirrorY = cabin.roof - .19f
+            val mirrorZ = cabin.glassTopZ + (cabin.glassBaseZ - cabin.glassTopZ) * .22f - .085f
+            mount(0f, mirrorY, mirrorZ)
+            Matrix.scaleM(modelMatrix, 0, .324f, .108f, .055f)
+            drawMeshWithCurrentMatrix(roundedMesh, .102f, .12f, .13f, textures.whiteTex, 0f, 1f, 1f,
+                .05f, .044f, .04f, .21f, .42f)
+            mount(0f, mirrorY, mirrorZ - .031f)
+            drawCabinTexture(mirrorGlass, fxEngine.mirrorColorTex, opaque = true)
+        }
     }
 
-    private fun drawFirstPersonDriver(t: VehicleTelemetry, seatSign: Float, wheelX: Float, wheelY: Float, wheelZ: Float) {
-        val fx = sin(t.headingRad); val fz = cos(t.headingRad)
-        val rx = cos(t.headingRad); val rz = -sin(t.headingRad)
-        val seatX = t.posX + rx * seatSign * 0.38f
-        val seatZ = t.posZ + rz * seatSign * 0.38f
-        // Knees and lap sit below eye level; no head is drawn at the first-person camera.
-        drawOrientedMesh(humanMesh, seatX - fx * 0.16f, t.posY + 0.65f, seatZ - fz * 0.16f,
-            t.headingRad, 0f, 0f, 0.48f, 0.28f, 0.56f, 0.79f, 0.77f, 0.68f, roughness = 0.95f)
+    private fun drawCabinTexture(mesh: GpuMesh, texture: Int, opaque: Boolean) {
+        GLES30.glUniform1f(shaders.uUnlit, 1f)
+        if (!opaque) {
+            GLES30.glDepthMask(false)
+            GLES30.glBlendFunc(GLES30.GL_ONE, GLES30.GL_ONE_MINUS_SRC_ALPHA)
+        }
+        drawMeshWithCurrentMatrix(mesh, 1f, 1f, 1f, texture, 1f, 1f, 1f, 0f, 0f, 0f, 0f, 1f)
+        if (!opaque) {
+            GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
+            GLES30.glDepthMask(true)
+        }
+        GLES30.glUniform1f(shaders.uUnlit, 0f)
+    }
+
+    private fun drawFirstPersonDriver(t: VehicleTelemetry, cabin: CabinLayout, driverX: Float, bodyY: Float) {
+        val forwardX = sin(t.headingRad); val forwardZ = cos(t.headingRad)
+        val rightX = cos(t.headingRad); val rightZ = -sin(t.headingRad)
+        val seatX = t.posX + rightX * driverX
+        val seatZ = t.posZ + rightZ * driverX
+        val wheelX = seatX + forwardX * cabin.wheelZ
+        val wheelZ = seatZ + forwardZ * cabin.wheelZ
+        val wheelY = bodyY + cabin.wheelY
+        val grip = cabin.wheelSize * .439f
+        val rotation = (-t.steeringWheelAngleDeg * PI.toFloat() / 180f).coerceIn(-1.1f, 1.1f)
         for (side in intArrayOf(-1, 1)) {
-            drawOrientedMesh(humanMesh, seatX + rx * side * 0.13f + fx * 0.17f, t.posY + 0.62f,
-                seatZ + rz * side * 0.13f + fz * 0.17f, t.headingRad, 0f, 0f,
-                0.20f, 0.25f, 0.54f, 0.78f, 0.76f, 0.67f, roughness = 0.95f)
-            // Hands track the same wheel rotation and tilt as the visible steering ring.
-            val angle = (-t.steeringWheelAngleDeg * PI.toFloat() / 180f).coerceIn(-2.1f, 2.1f)
-            val gripX = side * 0.14f
-            val gripY = 0.10f
-            val localX = gripX * cos(angle) - gripY * sin(angle)
-            val localY = gripX * sin(angle) + gripY * cos(angle)
-            val handX = wheelX + rx * localX + fx * localY * 0.276f
-            val handY = wheelY + localY * 0.961f
-            val handZ = wheelZ + rz * localX + fz * localY * 0.276f - fz * 0.035f
-            val elbowX = seatX + rx * side * 0.23f + fx * 0.10f
-            val elbowZ = seatZ + rz * side * 0.23f + fz * 0.10f
-            drawLimbSegment(elbowX, t.posY + 0.94f, elbowZ, handX, handY, handZ, 0.095f, 0.76f, 0.57f, 0.43f)
-            drawLimbSegment(seatX + rx * side * 0.20f - fx * 0.12f, t.posY + 1.12f,
-                seatZ + rz * side * 0.20f - fz * 0.12f, elbowX, t.posY + 0.94f, elbowZ,
-                0.13f, 0.84f, 0.82f, 0.73f)
+            val offset = side * .74f
+            val angle = rotation + offset
+            val localX = side * grip * cos(angle)
+            val localY = side * grip * sin(angle)
+            val handX = wheelX + rightX * localX + forwardX * localY * .276f
+            val handY = wheelY + localY * .961f
+            val handZ = wheelZ + rightZ * localX + forwardZ * localY * .276f
+            val elbowX = seatX + rightX * side * .245f + forwardX * (cabin.seatZ + .34f)
+            val elbowZ = seatZ + rightZ * side * .245f + forwardZ * (cabin.seatZ + .34f)
+            drawLimbSegment(elbowX, wheelY - .21f, elbowZ, handX, handY, handZ, .083f, .69f, .52f, .39f)
+            drawLimbSegment(seatX + rightX * side * .20f + forwardX * cabin.seatZ, wheelY - .07f,
+                seatZ + rightZ * side * .20f + forwardZ * cabin.seatZ, elbowX, wheelY - .21f, elbowZ,
+                .115f, .74f, .73f, .66f)
             drawOrientedMesh(humanMesh, handX, handY, handZ, t.headingRad, 0f, 0f,
-                0.105f, 0.12f, 0.10f, 0.76f, 0.57f, 0.43f, roughness = 0.86f)
+                .089f, .104f, .089f, .73f, .55f, .40f, roughness = .86f)
         }
     }
 

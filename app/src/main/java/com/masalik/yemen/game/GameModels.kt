@@ -395,6 +395,16 @@ data class VehicleSpec(
     val defaultColorHex: String
 )
 
+enum class WiperMode(val labelAr: String) {
+    AUTO("تلقائية"), ON("تشغيل"), OFF("إيقاف");
+
+    fun active(weather: WeatherPreset): Boolean = when (this) {
+        ON -> true
+        OFF -> false
+        AUTO -> weather == WeatherPreset.LIGHT_RAIN || weather == WeatherPreset.HEAVY_RAIN
+    }
+}
+
 data class VehicleTelemetry(
     val vehicleId: VehicleId = VehicleId.SHAHIQ,
     val speedKmh: Float = 0f,
@@ -410,6 +420,7 @@ data class VehicleTelemetry(
     val headlightsOn: Boolean = false,
     val headlightBeamMode: HeadlightBeamMode = HeadlightBeamMode.OFF,
     val wipersOn: Boolean = false,
+    val wiperMode: WiperMode = WiperMode.AUTO,
     val wiperPhaseRad: Float = 0f,
     val leftIndicatorOn: Boolean = false,
     val rightIndicatorOn: Boolean = false,

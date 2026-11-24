@@ -57,10 +57,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -113,10 +111,8 @@ import com.masalik.yemen.ui.theme.MasalikMuted
 import com.masalik.yemen.ui.theme.MasalikObsidian
 import com.masalik.yemen.ui.theme.MasalikSky
 import com.masalik.yemen.ui.theme.MasalikSlate
-import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -179,17 +175,6 @@ fun DrivingHudOverlay(
                             }
                         }
                     }
-            )
-        }
-
-        // Cockpit 3D Windshield Raindrops + Live Wiper Sweeping Layer (under HUD controls)
-        val isRaining = state.saveState.weather == WeatherPreset.LIGHT_RAIN || state.saveState.weather == WeatherPreset.HEAVY_RAIN
-        if (state.cameraMode == CameraMode.COCKPIT && isRaining && state.activeModal == ActiveModal.DRIVING) {
-            CockpitRainOverlay(
-                heavyRain = state.saveState.weather == WeatherPreset.HEAVY_RAIN,
-                wipersOn = t.wipersOn,
-                wiperPhaseRad = t.wiperPhaseRad,
-                speedKmh = t.speedKmh
             )
         }
 
@@ -500,7 +485,7 @@ fun DrivingHudOverlay(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     ToolChip("مصابيح: ${t.headlightBeamMode.labelAr}", t.headlightsOn) { vm.toggleHeadlights() }
-                    ToolChip("مسّاحات", t.wipersOn) { vm.toggleWipers() }
+                    ToolChip("المسّاحات · ${t.wiperMode.labelAr}", t.wipersOn) { vm.toggleWipers() }
                     ToolChip("إشارة يمين", t.rightIndicatorOn) { vm.toggleRightIndicator() }
                     ToolChip("إشارة يسار", t.leftIndicatorOn) { vm.toggleLeftIndicator() }
                 }
@@ -906,113 +891,6 @@ private fun AnalogAluminumPedal(
 }
 
 
-
-@Composable
-private fun CockpitRainOverlay(
-    heavyRain: Boolean,
-    wipersOn: Boolean,
-    wiperPhaseRad: Float,
-    speedKmh: Float
-) {
-    var animTick by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(33L)
-            animTick++
-        }
-    }
-    val dropCount = if (heavyRain) 62 else 36
-    val seeds = remember(dropCount) {
-        List(dropCount) { i ->
-            val h1 = ((i * 73856093) xor 0x5A17) and 0xFFFF
-            val h2 = ((i * 19349663) xor 0x2B91) and 0xFFFF
-            val h3 = ((i * 83492791) xor 0x1E3D) and 0xFFFF
-            Triple((h1 % 1000) / 1000f, (h2 % 1000) / 1000f, 0.55f + (h3 % 100) / 120f)
-        }
-    }
-
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val w = size.width
-        val h = size.height
-        val tSec = animTick * 0.033f
-        val speedStretch = 1f + (speedKmh / 95f).coerceIn(0f, 1.8f)
-
-        // Two wiper pivot points along lower windshield edge
-        val p1 = Offset(w * 0.30f, h * 0.96f)
-        val p2 = Offset(w * 0.68f, h * 0.96f)
-        val bladeLen = h * 0.72f
-        val sweepNorm = if (wipersOn) (0.5f + 0.5f * sin(wiperPhaseRad)) else 0.05f
-        val bladeAngle = (-PI * 0.86 + sweepNorm * PI * 0.66).toFloat()
-
-        for ((sx, sy, sz) in seeds) {
-            val dx = sx * w
-            val dy = ((sy + tSec * (0.14f * sz * speedStretch)) % 1.0f) * h
-
-            // Check if this raindrop sits inside the freshly-wiped arc when wipers are running
-            var wipedClear = false
-            if (wipersOn) {
-                for (pivot in listOf(p1, p2)) {
-                    val vx = dx - pivot.x
-                    val vy = dy - pivot.y
-                    val dist = kotlin.math.hypot(vx.toDouble(), vy.toDouble()).toFloat()
-                    if (dist < bladeLen && dy < pivot.y) {
-                        val ang = atan2(vy.toDouble(), vx.toDouble()).toFloat()
-                        if (abs(ang - bladeAngle) < 0.38f) {
-                            wipedClear = true
-                            break
-                        }
-                    }
-                }
-            }
-            if (wipedClear) continue
-
-            val radius = (2.2f + sz * 2.6f).dp.toPx()
-            val streakLen = radius * (2.0f + speedStretch * 1.8f)
-            // Translucent water bead + bright specular highlight
-            drawLine(
-                color = Color(0x55CBE7FF),
-                start = Offset(dx, dy - streakLen),
-                end = Offset(dx, dy),
-                strokeWidth = radius * 0.95f,
-                cap = StrokeCap.Round
-            )
-            drawCircle(
-                color = Color(0x88E8F6FF),
-                radius = radius * 0.78f,
-                center = Offset(dx, dy)
-            )
-            drawCircle(
-                color = Color(0xCCFFFFFF),
-                radius = radius * 0.28f,
-                center = Offset(dx - radius * 0.22f, dy - radius * 0.22f)
-            )
-        }
-
-        // Draw animated realistic rubber windshield wiper blades when active
-        if (wipersOn) {
-            for (pivot in listOf(p1, p2)) {
-                val tip = Offset(
-                    pivot.x + cos(bladeAngle) * bladeLen,
-                    pivot.y + sin(bladeAngle) * bladeLen
-                )
-                drawLine(
-                    color = Color(0xD90E131D),
-                    start = pivot,
-                    end = tip,
-                    strokeWidth = 6.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color = Color(0x6694A3B8),
-                    start = pivot,
-                    end = tip,
-                    strokeWidth = 1.6.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun PhotoModeOverlay(

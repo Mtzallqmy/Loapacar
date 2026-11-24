@@ -911,7 +911,10 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         physics.headlightBeamMode = next
         _uiState.update { it.copy(toastMessageAr = "المصابيح الأمامية: ${next.labelAr}") }
     }
-    fun toggleWipers() { physics.wipersOn = !physics.wipersOn }
+    @Synchronized fun toggleWipers() {
+        val modes = com.masalik.yemen.game.WiperMode.entries
+        physics.wiperMode = modes[(physics.wiperMode.ordinal + 1) % modes.size]
+    }
     fun toggleLeftIndicator() {
         physics.leftIndicatorOn = !physics.leftIndicatorOn
         if (physics.leftIndicatorOn) physics.rightIndicatorOn = false
