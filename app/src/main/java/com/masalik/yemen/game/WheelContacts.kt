@@ -42,7 +42,7 @@ class WheelSuspension {
             val d = center.distanceM + forward * f - right * s
             val l = lateral + right * f + forward * s
             val road = RoadSplineNetwork.sampleAt(d)
-            val shoulder = abs(l) > road.widthM * .5f
+            val shoulder = abs(l) > road.widthM * .5f && !SabirRoad.overlaps(d,l)
             val rough = when (road.surface) {
                 SurfaceType.ASPHALT -> if (shoulder && !road.isUrbanStreet) .021f else .001f
                 SurfaceType.MUD, SurfaceType.ROCK -> .048f

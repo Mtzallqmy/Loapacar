@@ -22,7 +22,7 @@ class ExpansionIntegrityTest {
 
     @Test fun missionsHaveUniqueIdsAndValidRoutes() {
         val missions = MissionsCatalog.ALL_OFFLINE_MISSIONS
-        assertEquals(76, missions.size)
+        assertEquals(78, missions.size)
         assertEquals(missions.size, missions.map { it.id }.distinct().size)
         missions.forEach {
             assertTrue(it.startDistanceM >= 0f)

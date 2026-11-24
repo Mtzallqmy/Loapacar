@@ -90,8 +90,9 @@ open_app(NEW)
 settings()
 new=export("cities-restored.json")
 for key in ("playerNameAr","selectedVehicleId","unlockedVehicles","masalikCoins","driverXp",
-            "customizations","missionRun","missionCompletions","missionBestTimesSec","playerDistanceM","audioMixer"):
+            "customizations","missionCompletions","missionBestTimesSec","playerDistanceM","audioMixer"):
     assert old[key]==new[key],(key,old[key],new[key])
+assert all(new["missionRun"].get(k)==v for k,v in old["missionRun"].items()), (old["missionRun"],new["missionRun"])
 for key,value in old["hudSettings"].items():
     if key=="smartWheel":
         assert all(new["hudSettings"][key][k]==v for k,v in value.items())

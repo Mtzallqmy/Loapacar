@@ -7,7 +7,8 @@ import kotlin.math.cos
 @Serializable
 data class MissionProgress(val id: String, val stage: Int = 0, val elapsed: Float = 0f,
                            val lateralM: Float = 2.85f, val cargoCondition: Float = 100f,
-                           val rivalDistance: Float? = null, val headingOffsetRad: Float = 0f)
+                           val rivalDistance: Float? = null, val headingOffsetRad: Float = 0f,
+                           val checkpointCondition: Float? = null, val checkpointElapsed: Float? = null)
 
 enum class ObjectiveKind { GATE, LOAD, UNLOAD, BOARD, ALIGHT, ATTACH, PARK }
 data class RoadObjective(val distance: Float, val lane: Float, val kind: ObjectiveKind,
@@ -25,6 +26,21 @@ class MissionRun(val mission: MissionDefinition, saved: MissionProgress? = null)
     private var actionTaken = false
     fun useEquipment() {
         if (waitingForAction) actionTaken = true
+    }
+    private var checkpointCondition = saved?.checkpointCondition ?: saved?.cargoCondition ?: 100f
+    private var checkpointElapsed = saved?.checkpointElapsed ?: saved?.elapsed ?: 0f
+    private fun completeStage() {
+        stage++
+        checkpointCondition=condition
+        checkpointElapsed=elapsed
+    }
+    fun segmentStart(): Pair<Float,MissionProgress> {
+        val last=objectives.getOrNull(stage-1)
+        val d=last?.distance ?: mission.startDistanceM
+        val l=last?.lane ?: if (mission.id==MissionsCatalog.PARKING_LESSON_ID) 34f else 2.55f
+        val yaw=if(last?.reverseRoute==true) Math.PI.toFloat() else 0f
+        return d to MissionProgress(mission.id,stage,checkpointElapsed,l,checkpointCondition,headingOffsetRad=yaw,
+            checkpointCondition=checkpointCondition,checkpointElapsed=checkpointElapsed)
     }
     private var lastSpeed: Float? = null
     val payloadKg: Float get() {
@@ -46,7 +62,7 @@ class MissionRun(val mission: MissionDefinition, saved: MissionProgress? = null)
     val finished get() = stage == objectives.size
     val target get() = objectives.getOrNull(stage)
     fun snapshot(lateral: Float, rival: Float?, headingOffsetRad: Float = 0f) =
-        MissionProgress(mission.id, stage, elapsed, lateral, condition, rival, headingOffsetRad)
+        MissionProgress(mission.id, stage, elapsed, lateral, condition, rival, headingOffsetRad,checkpointCondition,checkpointElapsed)
 
     fun advance(dt: Float, t: VehicleTelemetry, headingOffset: Float, impact: Float) {
         val goal = target ?: return
@@ -78,7 +94,7 @@ class MissionRun(val mission: MissionDefinition, saved: MissionProgress? = null)
             abs(t.lateralOffsetM - goal.lane) <= (if (goal.isStop) (2.4f-halfWidth).coerceAtLeast(.35f) else 6f)
         val alignment = cos(headingOffset) * (if (goal.reverseRoute) -1f else 1f)
         if (!goal.isStop) {
-            if (inZone && alignment * t.forwardSpeedMs > 0.15f) stage++
+            if (inZone && alignment * t.forwardSpeedMs > 0.15f) completeStage()
             return
         }
         val secured = t.handbrake || (t.transmissionMode == "auto" && t.autoShifter == AutomaticShifterState.P)
@@ -91,7 +107,7 @@ class MissionRun(val mission: MissionDefinition, saved: MissionProgress? = null)
         waitingForAction = goal.kind != ObjectiveKind.PARK && !actionTaken
         if (waitingForAction) return
         dwell += dt
-        if (dwell >= 2f) { stage++; dwell = 0f; actionTaken = false; waitingForAction = false }
+        if (dwell >= 2f) { completeStage(); dwell = 0f; actionTaken = false; waitingForAction = false }
     }
 
     companion object {

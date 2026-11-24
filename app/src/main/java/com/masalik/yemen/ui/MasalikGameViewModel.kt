@@ -482,9 +482,8 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
                 missionElapsedSec = active?.elapsed ?: 0f
                 if (active?.finished == true) completeActiveMission(mission, missionElapsedSec)
                 else if (active?.failure != null) {
-                    run = null
-                    physics.configureAiRival(false)
-                    _uiState.update { it.copy(activeMission = null, missionBannerAr = active.failure) }
+                    stopAutoDrive()
+                    _uiState.update { it.copy(activeModal=ActiveModal.PAUSE,missionBannerAr=active.failure) }
                     saveSnapshotNow()
                 }
             }
@@ -633,6 +632,20 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     @Synchronized fun operateMissionEquipment() { run?.useEquipment() }
+
+    @Synchronized fun restartSegment() {
+        val previous=run ?: return
+        val (distance,progress)=previous.segmentStart()
+        releaseDriverInputs()
+        inputHandbrake=false
+        run=MissionRun(previous.mission,progress)
+        physics.resetToRoad(distance,progress.lateralM,progress.headingOffsetRad)
+        physics.jobPayloadKg=run?.payloadKg ?: 0f
+        physics.configureAiRival(previous.mission.hasAiRival,distance,previous.mission.aiRivalSpeedMs)
+        snapToCurrentPose()
+        _uiState.update { it.copy(activeModal=ActiveModal.DRIVING,missionBannerAr=run?.target?.label) }
+        saveSnapshotNow()
+    }
 
     @Synchronized fun cancelMission() {
         run = null

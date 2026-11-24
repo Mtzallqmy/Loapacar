@@ -408,6 +408,7 @@ enum class WiperMode(val labelAr: String) {
 }
 
 data class VehicleTelemetry(
+    val payloadKg: Float = 0f,
     val vehicleId: VehicleId = VehicleId.SHAHIQ,
     val speedKmh: Float = 0f,
     val forwardSpeedMs: Float = 0f,

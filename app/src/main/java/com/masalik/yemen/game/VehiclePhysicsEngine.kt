@@ -521,11 +521,11 @@ class VehiclePhysicsEngine {
                 forwardSpeedMs *= 0.22f
                 applyCollisionDamage(hitSpeed)
             }
-            if (livingWorld.didRunRedLight(prevDist, distanceAlongRoadM, forwardSpeedMs)) {
+            if (abs(lateralOffsetM) < nearbyRoad.widthM*.5f && livingWorld.didRunRedLight(prevDist, distanceAlongRoadM, forwardSpeedMs)) {
                 trafficViolationWarningAr = "تنبيه مروري: تجاوزت الإشارة الحمراء! التزم بقواعد السير"
                 violationClearTimerSec = 4.2f
             }
-            val radarHit = livingWorld.checkSpeedRadarViolation(prevDist, distanceAlongRoadM, abs(forwardSpeedMs * 3.6f))
+            val radarHit = if (abs(lateralOffsetM) <= nearbyRoad.widthM*.5f) livingWorld.checkSpeedRadarViolation(prevDist,distanceAlongRoadM,abs(forwardSpeedMs*3.6f)) else null
             if (radarHit != null) {
                 lastTriggeredRadar = radarHit
                 trafficViolationWarningAr = "فلاش ساهر! تجاوزت سرعة ${radarHit.speedLimitKmh} كم/س عند ${radarHit.nameAr} (−150 ر.ي)"
@@ -654,6 +654,7 @@ class VehiclePhysicsEngine {
 
         return VehicleTelemetry(
             vehicleId = vehicleId,
+            payloadKg = jobPayloadKg,
             speedKmh = abs(forwardSpeedMs * 3.6f),
             forwardSpeedMs = forwardSpeedMs,
             rpm = currentRpm,

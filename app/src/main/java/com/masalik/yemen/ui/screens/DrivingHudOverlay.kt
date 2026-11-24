@@ -767,7 +767,10 @@ fun DrivingHudOverlay(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    if (state.activeMission != null) ToolChip("إلغاء المهمة", false) { vm.cancelMission() }
+                    if (state.activeMission != null) Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        ToolChip("إعادة من آخر محطة", false) { vm.restartSegment() }
+                        ToolChip("إلغاء المهمة", false) { vm.cancelMission() }
+                    }
                     Text("إيقاف مؤقت — سيارتي", color = MasalikAmberSoft, fontSize = 20.sp, fontWeight = FontWeight.Black)
                     Button(
                         onClick = { vm.setModal(ActiveModal.DRIVING) },

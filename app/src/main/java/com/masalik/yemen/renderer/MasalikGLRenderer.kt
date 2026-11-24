@@ -1988,6 +1988,19 @@ class MasalikGLRenderer(
 
         if (isPickup && custom.pickupAccessory == PickupAccessoryType.NONE) {
             val bedX = t.posX - fwdX * len * 0.26f; val bedZ = t.posZ - fwdZ * len * 0.26f
+            if (t.payloadKg>0f) {
+                val bags=kotlin.math.ceil(t.payloadKg/46f).toInt().coerceIn(1,8)
+                for (bag in 0 until bags) {
+                    val across=(bag%2-.5f)*.54f
+                    val along=(bag/2%2-.5f)*.64f
+                    val x=bedX+rightX*across+fwdX*along
+                    val z=bedZ+rightZ*across+fwdZ*along
+                    val y=baseY+lowerH+.23f+bag/4*.285f
+                    drawOrientedMesh(roundedMesh,x,y,z,visualHeading+(bag%3-1)*.09f,
+                        pitchDeg,rollDeg,.50f,.34f,.67f,.54f,.38f,.19f,roughness=.96f)
+                    drawOrientedBox(x,y+.163f,z,visualHeading,.035f,.016f,.53f,.28f,.19f,.095f)
+                }
+            }
             drawOrientedBox(bedX, baseY + lowerH + 0.04f, bedZ, visualHeading,
                 wid * 0.82f, 0.06f, len * 0.35f, 0.15f, 0.17f, 0.16f)
             for (side in intArrayOf(-1, 1)) drawOrientedMesh(roundedMesh,

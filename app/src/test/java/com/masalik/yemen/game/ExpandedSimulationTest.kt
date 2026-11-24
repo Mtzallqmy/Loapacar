@@ -22,9 +22,12 @@ class ExpandedSimulationTest {
                     assertFalse("junction $junction at $lateral", p.hitBoundary)
                 }
             }
-            val side = CityStreetNetwork.constrain(district.centerM + 60f, 34f, 6f)
+            // Pick the middle of a real block for each authored street plan.
+            val gap=district.junctionsM.zipWithNext().maxBy { it.second-it.first }
+            val midpoint=(gap.first+gap.second)*.5f
+            val side = CityStreetNetwork.constrain(midpoint, 34f, 6f)
             assertFalse(side.hitBoundary)
-            val block = CityStreetNetwork.constrain(district.centerM + 60f, 20f, 6f)
+            val block = CityStreetNetwork.constrain(midpoint, 20f, 6f)
             assertTrue(block.hitBoundary)
             assertTrue(abs(block.lateralM) <= 6f || abs(block.lateralM) >= 29.19f)
         }

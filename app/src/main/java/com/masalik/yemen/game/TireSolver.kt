@@ -25,7 +25,7 @@ class TireSolver {
             val side = if (wheel % 2 == 0) -.5f else .5f
             val axle = if (wheel < 2) .5f else -.5f
             val offset = lateral + axle * spec.wheelbaseM * sin(yaw) + side * spec.trackWidthM * cos(yaw)
-            val shoulder = road.surface == SurfaceType.ASPHALT && !road.isUrbanStreet && abs(offset) > road.widthM*.5f
+            val shoulder = road.surface == SurfaceType.ASPHALT && !road.isUrbanStreet && !SabirRoad.overlaps(road.distanceM,offset) && abs(offset) > road.widthM*.5f
             input[9+wheel]=if (shoulder) grip*.58f else grip
         }
         input[13]=if(fourWheel) 1f else 0f
