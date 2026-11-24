@@ -270,6 +270,8 @@ object RoadSplineNetwork {
     fun terrainHeightAt(worldX: Float, worldZ: Float, roadSample: RoadSample, lateralOffsetM: Float): Float {
         val absLat = abs(lateralOffsetM)
         if (CityStreetNetwork.districtAt(roadSample.distanceM) != null && absLat < 44f) return roadSample.y
+        if (roadSample.distanceM in SabirRoad.start..SabirRoad.end && lateralOffsetM < 0f &&
+            lateralOffsetM >= SabirRoad.offset(roadSample.distanceM)-SabirRoad.halfWidth-5f) return roadSample.y
         val roadHalf = roadSample.widthM * 0.5f + 3.4f
         if (absLat <= roadHalf + 0.5f) return roadSample.y
 

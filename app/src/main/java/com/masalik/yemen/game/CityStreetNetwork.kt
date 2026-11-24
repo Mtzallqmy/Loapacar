@@ -26,6 +26,13 @@ object CityStreetNetwork {
 
     fun constrain(distanceM: Float, lateralM: Float, mainHalfWidthM: Float): ConstrainedPosition {
         if (abs(lateralM) <= mainHalfWidthM) return ConstrainedPosition(distanceM, lateralM, false)
+        if (distanceM in SabirRoad.start..SabirRoad.end) {
+            val center = SabirRoad.offset(distanceM)
+            val limited = lateralM.coerceIn(center-SabirRoad.halfWidth, center+SabirRoad.halfWidth)
+            val main = lateralM.coerceIn(-mainHalfWidthM, mainHalfWidthM)
+            if (abs(limited-lateralM) <= abs(main-lateralM))
+                return ConstrainedPosition(distanceM, limited, abs(limited-lateralM) > .002f)
+        }
         val district = districtAt(distanceM)
         if (district == null) return ConstrainedPosition(distanceM, lateralM.coerceIn(-mainHalfWidthM, mainHalfWidthM), true)
         val maxLat = SIDE_STREET_OFFSET_M + SIDE_HALF_WIDTH_M

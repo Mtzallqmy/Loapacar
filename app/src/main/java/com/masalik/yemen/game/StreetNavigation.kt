@@ -20,6 +20,9 @@ object StreetNavigation {
     val streets: List<MapStreet> by lazy {
         val main = sortedSetOf(0f, RoadSplineNetwork.TOTAL_ROAD_LENGTH_M)
         buildList {
+            main.add(SabirRoad.start)
+            main.add(SabirRoad.end)
+            SabirRoad.points.zipWithNext { a,b -> add(MapStreet(a,b)) }
             for (district in CityStreetNetwork.districts) {
                 main.addAll(district.junctionsM)
                 for (side in listOf(-CityStreetNetwork.SIDE_STREET_OFFSET_M,CityStreetNetwork.SIDE_STREET_OFFSET_M)) {

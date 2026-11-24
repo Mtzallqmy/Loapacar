@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.opengl.GLES30
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
+import com.masalik.yemen.game.SabirRoad
 import com.masalik.yemen.game.YemenJourneys
 import com.masalik.yemen.game.QuayHumps
 import com.masalik.yemen.game.AtmosphereSnapshot
@@ -674,10 +675,25 @@ class MasalikGLRenderer(
             pushTri(roadVerts, l0x, s0.y + 0.03f, l0z, 0f, v0, r0x, s0.y + 0.03f, r0z, 1f, v0, r1x, s1.y + 0.03f, r1z, 1f, v1, 0f, 1f, 0f)
             pushTri(roadVerts, l0x, s0.y + 0.03f, l0z, 0f, v0, r1x, s1.y + 0.03f, r1z, 1f, v1, l1x, s1.y + 0.03f, l1z, 0f, v1, 0f, 1f, 0f)
 
+            if (s0.distanceM >= SabirRoad.start && s1.distanceM <= SabirRoad.end) {
+                val ribbon = roads.getOrPut(RoadFinish(SurfaceType.ASPHALT,false)) { ArrayList() }
+                val off0=SabirRoad.offset(s0.distanceM)
+                val off1=SabirRoad.offset(s1.distanceM)
+                val left0=off0-SabirRoad.halfWidth; val right0=off0+SabirRoad.halfWidth
+                val left1=off1-SabirRoad.halfWidth; val right1=off1+SabirRoad.halfWidth
+                val ax=s0.x+s0.rightX*left0; val az=s0.z+s0.rightZ*left0
+                val bx=s0.x+s0.rightX*right0; val bz=s0.z+s0.rightZ*right0
+                val cx=s1.x+s1.rightX*right1; val cz=s1.z+s1.rightZ*right1
+                val ex=s1.x+s1.rightX*left1; val ez=s1.z+s1.rightZ*left1
+                pushTri(ribbon,ax,s0.y+.085f,az,0f,v0,bx,s0.y+.085f,bz,1f,v0,cx,s1.y+.085f,cz,1f,v1,0f,1f,0f)
+                pushTri(ribbon,ax,s0.y+.085f,az,0f,v0,cx,s1.y+.085f,cz,1f,v1,ex,s1.y+.085f,ez,0f,v1,0f,1f,0f)
+            }
+
             val swLift0 = if (s0.isUrbanStreet) 0.19f else 0.02f
             val swLift1 = if (s1.isUrbanStreet) 0.19f else 0.02f
             val swW = 3.6f
             for (side in intArrayOf(-1, 1)) {
+                if (side < 0 && SabirRoad.overlaps(s0.distanceM, -hw0, swW)) continue
                 val in0 = side * hw0
                 val out0 = side * (hw0 + swW)
                 val in1 = side * hw1
@@ -690,7 +706,8 @@ class MasalikGLRenderer(
                 pushTri(shoulder, p0x, s0.y + swLift0, p0z, 0f, v0, p2x, s1.y + swLift1, p2z, 1f, v1, p3x, s1.y + swLift1, p3z, 0f, v1, 0f, 1f, 0f)
             }
 
-            val offsets = floatArrayOf(hw0 + swW, hw0 + 18f, hw0 + 46f, hw0 + 88f)
+            val offsets = (listOf(hw0 + swW, hw0 + 18f, hw0 + 46f, hw0 + 88f) +
+                listOf(-SabirRoad.offset(s0.distanceM)+SabirRoad.halfWidth+2f).filter { s0.distanceM in SabirRoad.start..SabirRoad.end && it > hw0+swW }).distinct().sorted()
             for (side in intArrayOf(-1, 1)) {
                 for (band in 0 until offsets.lastIndex) {
                     val latA = side * offsets[band]
@@ -827,6 +844,7 @@ class MasalikGLRenderer(
                     val floors = profile.minFloors + (bHash % profile.floorVariants)
                     val buildingH = floors * 3.5f
                     val lat = side * (sample.widthM * 0.5f + 3.9f + buildingW * 0.52f)
+                    if (SabirRoad.overlaps(d, lat, buildingW*.5f+3f)) continue
                     val bx = sample.x + sample.rightX * lat
                     val bz = sample.z + sample.rightZ * lat
                     val by = sample.y + buildingH * 0.5f

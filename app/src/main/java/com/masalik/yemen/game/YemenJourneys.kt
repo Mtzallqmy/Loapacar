@@ -40,7 +40,9 @@ object YemenJourneys {
             110f, VehicleId.SAQR, GameModeCategory.CARGO, TimeOfDayPreset.MORNING, WeatherPreset.CLOUDY,
             RoadObjective(TAIZ_MARKET_M, MARKET_LANE, ObjectiveKind.LOAD, "مخزن البن · ادخل الشارع الشرقي الموازي وحمّل الأكياس"),
             route,
-            RoadObjective(1380f, 2.85f, ObjectiveKind.GATE, "تابع صعود المنحدر إلى مطلّ جبل صبر"),
+            if (marketStreet) RoadObjective(1380f, SabirRoad.offset(1380f)+1.7f, ObjectiveKind.GATE,
+                "خذ التفريعة اليسرى واصعد طريق المدرجات إلى مطلّ صبر")
+            else RoadObjective(1380f, 2.85f, ObjectiveKind.GATE, "تابع صعود المنحدر إلى مطلّ جبل صبر"),
             RoadObjective(SABIR_LOOKOUT_M, 2.85f, ObjectiveKind.UNLOAD, "مطلّ صبر · ثبّت السيارة وسلّم أكياس البن"),
             RoadObjective(1450f, -2.85f, ObjectiveKind.GATE, "استدر حين يخلو الطريق وعُد إلى السوق بالصندوق الفارغ", reverseRoute = true),
             RoadObjective(TAIZ_MARKET_M, MARKET_LANE, ObjectiveKind.PARK, "اصطف بجوار مخزن البن لإنهاء الرحلة", reverseRoute = true)
