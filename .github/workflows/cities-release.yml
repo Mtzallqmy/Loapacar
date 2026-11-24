@@ -1,0 +1,52 @@
+name: Distribute signed Cities APK
+on:
+  push:
+    paths: [".github/workflows/cities-release.yml", "docs/cities-results-ar.md"]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/feat/sayyarati-4-cities'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45481205985
+          name: MyCar-4.0-Cities-Android8Plus-ARM64
+          path: signed
+      - name: Publish the verified installable file and offline testing evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BINARY_COMMIT: bda281b7a1cb270dc4ff651bdac7b938d1d501f9
+          EVIDENCE_RUN: '45481205985'
+          APK_SHA: 5fbda8279227d33c9b1eabc3cf43933adf824c3b7dbc74d6632efcdbd65567a6
+        run: |
+          set -eu
+          tag=v4.0.0-cities-preview.1
+          apk=MyCar-4.0.0-Cities-Preview-Android8Plus-ARM64.apk
+          cp signed/outputs/apk/journeys/app-journeys.apk "$apk"
+          echo "$APK_SHA  $apk" > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          cat docs/cities-release-ar.md docs/cities-results-ar.md > "$RUNNER_TEMP/notes.md"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            mkdir -p downloaded
+            gh release download "$tag" --pattern "$apk" -D downloaded
+            (cd downloaded && sha256sum -c ../SHA256SUMS)
+            gh release edit "$tag" --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create "$tag" "$apk" SHA256SUMS --target "$BINARY_COMMIT" --prerelease --title 'سيارتي 4.0 — مدن اليمن (معاينة أندرويد)' --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+          mkdir -p proof
+          cp -r signed/test-results proof/
+          cp signed/outputs/apk/journeys/*.txt proof/
+          for check in touch benchmark journeys migration soak; do
+            if gh run download "$EVIDENCE_RUN" -n "Android-captures-$check" -D "proof/$check"; then
+              echo "$check captures archived"
+            fi
+          done
+          zip -rq MyCar-4.0-Testing.zip proof
+          gh release upload "$tag" MyCar-4.0-Testing.zip --clobber
