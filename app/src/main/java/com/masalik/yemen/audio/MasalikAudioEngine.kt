@@ -72,6 +72,7 @@ class MasalikAudioEngine(private val assets: android.content.res.AssetManager) {
     @Volatile var vehicleId: com.masalik.yemen.game.VehicleId = com.masalik.yemen.game.VehicleId.SHAHIQ
     @Volatile var engineBaseFreqHz: Float = 46f
     @Volatile var engineRpm: Float = 800f
+    @Volatile var drivelineLoad: Float = 0f
     @Volatile var throttle: Float = 0f
     @Volatile var speedKmh: Float = 0f
     @Volatile var surface: SurfaceType = SurfaceType.ASPHALT
@@ -261,7 +262,7 @@ class MasalikAudioEngine(private val assets: android.content.res.AssetManager) {
             val isDiesel = vehicleId in listOf(com.masalik.yemen.game.VehicleId.SAQR,
                 com.masalik.yemen.game.VehicleId.NIMR, com.masalik.yemen.game.VehicleId.JABAL,
                 com.masalik.yemen.game.VehicleId.HAFILAT, com.masalik.yemen.game.VehicleId.QAFILA)
-            val loadTarget = .38f + throttle * .62f
+            val loadTarget = .32f + throttle * .43f + drivelineLoad.coerceIn(0f,1f)*.25f
             val tireSurface = surface
             val rollingSpeed = (speedKmh / 90f).coerceIn(0f, 1f)
             val wetTires = weather == WeatherPreset.HEAVY_RAIN || weather == WeatherPreset.LIGHT_RAIN

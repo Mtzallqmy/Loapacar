@@ -109,7 +109,7 @@ class MasalikGLRenderer(
     private lateinit var steerRingRound: GpuMesh
     private lateinit var steerRingFlat: GpuMesh
 
-    private data class RoadFinish(val surface: SurfaceType, val boulevard: Boolean)
+    private data class RoadFinish(val surface: SurfaceType, val boulevard: Boolean, val crossing: Boolean = false)
     private val roadMeshes = mutableMapOf<RoadFinish, DynamicMesh>()
     private lateinit var shoulderMesh: DynamicMesh
     private lateinit var sidewalkDynamicMesh: DynamicMesh
@@ -131,6 +131,7 @@ class MasalikGLRenderer(
 
     private val fxEngine = ParticleAndMirrorEngine()
 
+    private lateinit var frameProbe: FrameProbe
     private var currentCamX = 0f
     private var currentCamY = 4f
     private var currentCamZ = -8f
@@ -146,6 +147,7 @@ class MasalikGLRenderer(
         GLES30.glEnable(GLES30.GL_BLEND)
         GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
 
+        frameProbe = FrameProbe()
         shaders = ShaderLibrary()
         cabinDisplays = CabinDisplays()
         lastCabinMirrorSeconds = -1f
@@ -227,6 +229,7 @@ class MasalikGLRenderer(
         val t = snap.telemetry
 
         val centerDist = t.distanceAlongRoadM
+        frameProbe.begin()
         streamCorridor(centerDist)
 
         // Update 3D Drift Smoke, Desert Dust, Rain Spray, Exhaust Backfire Flames & Asphalt Skidmarks
@@ -236,9 +239,13 @@ class MasalikGLRenderer(
         // Pass A: Live Rear-View Mirror Render-to-Texture FBO Pass (Backwards-facing 3D camera!)
         val showLiveMirror = snap.graphicsQuality != com.masalik.yemen.game.GraphicsQuality.LOW && !snap.isLobbyOrGarage && !snap.isReplayMode && snap.rearMirrorEnabled &&
             (snap.cameraMode == CameraMode.COCKPIT || snap.cameraMode == CameraMode.HOOD || snap.cameraMode == CameraMode.CHASE_NEAR)
-        val refreshMirror = snap.cameraMode != CameraMode.COCKPIT ||
-            lastCabinMirrorSeconds < 0f || weatherAnimTime - lastCabinMirrorSeconds >= .055f ||
-            abs(centerDist - lastCabinMirrorDistance) > 20f
+        val mirrorPeriod = when (snap.graphicsQuality) {
+            com.masalik.yemen.game.GraphicsQuality.MEDIUM -> .16f
+            com.masalik.yemen.game.GraphicsQuality.HIGH -> .10f
+            else -> .067f
+        }
+        val refreshMirror = lastCabinMirrorSeconds < 0f || weatherAnimTime-lastCabinMirrorSeconds >= mirrorPeriod ||
+            abs(centerDist-lastCabinMirrorDistance)>20f
         if (showLiveMirror && refreshMirror && fxEngine.beginRearMirrorPass()) {
             lastCabinMirrorSeconds = weatherAnimTime
             lastCabinMirrorDistance = centerDist
@@ -284,6 +291,7 @@ class MasalikGLRenderer(
         if (showLiveMirror && snap.cameraMode != CameraMode.COCKPIT) {
             fxEngine.drawMirrorOverlay(shaders, skyVboId, isCockpit = false)
         }
+        frameProbe.end()
         if (!firstFrameReported) { firstFrameReported = true; onFirstFrame() }
     }
 
@@ -338,7 +346,6 @@ class MasalikGLRenderer(
 
         drawYemeniCityEnvironment(centerDist, snap, atmo)
         if (!snap.isLobbyOrGarage) drawMarketStalls(centerDist, atmo)
-        drawTownStreetGrid(centerDist)
         drawTaizLandmarks(centerDist)
         drawRoundaboutsAndCrossStreets(centerDist, atmo)
         drawSpeedRadars(centerDist, atmo)
@@ -737,6 +744,33 @@ class MasalikGLRenderer(
             }
         }
 
+        fun streetPatch(d0: Float, d1: Float, left: Float, right: Float, cross: Boolean, height: Float) {
+            val a=RoadSplineNetwork.sampleAt(d0); val b=RoadSplineNetwork.sampleAt(d1)
+            val verts=roads.getOrPut(RoadFinish(SurfaceType.ASPHALT,false,cross)) { ArrayList() }
+            val ax=a.x+a.rightX*left; val az=a.z+a.rightZ*left
+            val bx=a.x+a.rightX*right; val bz=a.z+a.rightZ*right
+            val cx=b.x+b.rightX*right; val cz=b.z+b.rightZ*right
+            val ex=b.x+b.rightX*left; val ez=b.z+b.rightZ*left
+            val v0=if(cross) 0f else d0*.08f; val v1=if(cross) 1f else d1*.08f
+            pushTri(verts,ax,a.y+height,az,0f,v0,bx,a.y+height,bz,1f,v0,cx,b.y+height,cz,1f,v1,0f,1f,0f)
+            pushTri(verts,ax,a.y+height,az,0f,v0,cx,b.y+height,cz,1f,v1,ex,b.y+height,ez,0f,v1,0f,1f,0f)
+        }
+        val grid=com.masalik.yemen.game.CityStreetNetwork
+        for (district in grid.districts) {
+            if (district.junctionsM.last()<startM || district.junctionsM.first()>endM) continue
+            for (j in district.junctionsM) {
+                streetPatch(j-grid.SIDE_HALF_WIDTH_M,j+grid.SIDE_HALF_WIDTH_M,-38.8f,38.8f,false,.215f)
+                val width=RoadSplineNetwork.sampleAt(j).widthM*.5f
+                for (delta in listOf(-7f,7f))
+                    streetPatch(j+delta-1.1f,j+delta+1.1f,-width,width,true,.255f)
+            }
+            var d=district.junctionsM.first()
+            while(d<district.junctionsM.last()) {
+                val end=minOf(d+8f,district.junctionsM.last())
+                for (lane in listOf(-34f,34f)) streetPatch(d,end,lane-grid.SIDE_HALF_WIDTH_M,lane+grid.SIDE_HALF_WIDTH_M,false,.232f)
+                d=end
+            }
+        }
         return Corridor(centerDistM, roads.mapValues { it.value.toFloatArray() }, shoulderVerts.toFloatArray(), sidewalkVerts.toFloatArray(), terrainVerts.toFloatArray())
     }
 
@@ -754,6 +788,7 @@ class MasalikGLRenderer(
             if (mesh.vertexCount == 0) continue
             val paved = finish.surface == SurfaceType.ASPHALT
             val tex = when {
+                finish.crossing -> textures.crosswalkTex
                 finish.boulevard -> textures.modernBoulevardTex
                 paved -> textures.roadAsphaltTex
                 else -> textures.naturalRoads.getValue(finish.surface)
@@ -1312,34 +1347,6 @@ class MasalikGLRenderer(
                 val d = ramp.distance - ramp.length * .5f + (i+.5f) * ramp.length / 12f
                 val h = ramp.height(d, ramp.lane)
                 box(d,ramp.lane,.24f+h/2,ramp.width,h+.02f,ramp.length/12f,.66f,.63f,.54f)
-            }
-        }
-    }
-
-    private fun drawTownStreetGrid(centerDistM: Float) {
-        val network = com.masalik.yemen.game.CityStreetNetwork
-        for (district in network.districts) {
-            if (abs(district.centerM - centerDistM) > 430f) continue
-            for (junction in district.junctionsM) {
-                val s = RoadSplineNetwork.sampleAt(junction)
-                drawOrientedQuad(s.x, s.y + 0.23f, s.z, s.headingRad + PI.toFloat() * 0.5f,
-                    network.SIDE_HALF_WIDTH_M * 2f, network.SIDE_STREET_OFFSET_M * 2f + 9.6f, textures.roadAsphaltTex)
-            }
-            // Parallel side lanes follow the same sampled terrain as the main route.
-            var d = district.junctionsM.first()
-            while (d < district.junctionsM.last()) {
-                val a = RoadSplineNetwork.sampleAt(d)
-                val b = RoadSplineNetwork.sampleAt((d + 8f).coerceAtMost(district.junctionsM.last()))
-                val dx = b.x - a.x; val dz = b.z - a.z
-                val length = kotlin.math.sqrt(dx * dx + dz * dz) + 0.7f
-                for (side in intArrayOf(-1, 1)) {
-                    val offset = side * network.SIDE_STREET_OFFSET_M
-                    drawOrientedQuad((a.x + b.x) * 0.5f + a.rightX * offset,
-                        (a.y + b.y) * 0.5f + 0.23f,
-                        (a.z + b.z) * 0.5f + a.rightZ * offset, a.headingRad,
-                        network.SIDE_HALF_WIDTH_M * 2f, length, textures.roadAsphaltTex)
-                }
-                d += 8f
             }
         }
     }
@@ -2368,6 +2375,15 @@ class MasalikGLRenderer(
         metallic: Float = 0.05f,
         roughness: Float = 0.72f
     ) {
+        val xEye=x-currentCamX; val yEye=y-currentCamY; val zEye=z-currentCamZ
+        val depth=-(viewMatrix[2]*xEye+viewMatrix[6]*yEye+viewMatrix[10]*zEye)
+        val radius=mesh.radius*maxOf(abs(sx),abs(sy),abs(sz))
+        if (depth < -radius || depth-radius > 445f) return
+        val vx=viewMatrix[0]*xEye+viewMatrix[4]*yEye+viewMatrix[8]*zEye
+        val vy=viewMatrix[1]*xEye+viewMatrix[5]*yEye+viewMatrix[9]*zEye
+        // Expand by the sphere's lateral and longitudinal extent in camera coordinates.
+        if (abs(vx)>maxOf(0f,depth+radius)/projMatrix[0]+radius ||
+            abs(vy)>maxOf(0f,depth+radius)/projMatrix[5]+radius) return
         Matrix.setIdentityM(modelMatrix, 0)
         Matrix.translateM(modelMatrix, 0, x, y, z)
         Matrix.rotateM(modelMatrix, 0, headingRad * 180f / PI.toFloat(), 0f, 1f, 0f)

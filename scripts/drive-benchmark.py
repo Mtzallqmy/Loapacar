@@ -34,6 +34,7 @@ def hold(pt, ms):
     adb("shell", "input", "swipe", *pt, *pt, ms)
 
 def scenario(name, city, car, weather, night=False, cockpit=True, auto=False):
+    adb("logcat","-c")
     adb("shell","pm","clear",PKG)
     adb("shell","am","start","-W","-n",PKG+"/com.masalik.yemen.MainActivity",
         "--ez","masalik_test_cockpit","true","--es","masalik_test_city",city,
@@ -53,6 +54,7 @@ def scenario(name, city, car, weather, night=False, cockpit=True, auto=False):
         time.sleep(2.5)
     hold(gas,3000)
     hold(brake,1500)
+    (OUT/(name+"-gpu.log")).write_bytes(adb("logcat","-d","CitiesGPU:I","*:S"))
     memory = adb("shell","dumpsys","meminfo",PKG).decode()
     (OUT/(name+"-mem.txt")).write_text(memory)
     latency = adb("shell","dumpsys","SurfaceFlinger","--latency","'"+layer+"'").decode() if layer else ""

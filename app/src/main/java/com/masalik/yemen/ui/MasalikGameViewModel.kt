@@ -508,6 +508,9 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         audioEngine.vehicleId = physics.vehicleId
         audioEngine.engineBaseFreqHz = physics.spec.engineBaseFreqHz
         audioEngine.engineRpm = telemetry.rpm
+        audioEngine.drivelineLoad = telemetry.throttle * (.4f +
+            .35f*(physics.jobPayloadKg/physics.spec.maxCargoKg.coerceAtLeast(1f)).coerceIn(0f,1f) +
+            .25f*(telemetry.slopeGradePct/8f).coerceIn(0f,1f))
         audioEngine.throttle = telemetry.throttle
         audioEngine.speedKmh = telemetry.speedKmh
         audioEngine.surface = telemetry.surface

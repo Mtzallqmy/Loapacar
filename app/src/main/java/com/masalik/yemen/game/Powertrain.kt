@@ -1,8 +1,6 @@
 package com.masalik.yemen.game
 
 import kotlin.math.PI
-import kotlin.math.abs
-import kotlin.math.pow
 
 /** Fictional fleet calibrations. Ratios are dimensionless, height in metres. */
 internal class Powertrain(

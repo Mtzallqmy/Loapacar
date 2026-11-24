@@ -11,6 +11,11 @@ import kotlin.math.sqrt
 
 class GpuMesh(vertices: FloatArray) {
     val vertexCount: Int = vertices.size / 8 // pos(3) + normal(3) + uv(2)
+    val radius: Float = run {
+        var largest = 0f
+        for (i in vertices.indices step 8) largest = maxOf(largest,vertices[i]*vertices[i]+vertices[i+1]*vertices[i+1]+vertices[i+2]*vertices[i+2])
+        sqrt(largest)
+    }
     private val vboId: Int
 
     init {
