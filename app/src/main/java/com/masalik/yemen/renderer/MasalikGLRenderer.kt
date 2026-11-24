@@ -80,6 +80,8 @@ class MasalikGLRenderer(
     private var frameStartNs: Long = 0L
     private lateinit var cabinDisplays: CabinDisplays
     private lateinit var mirrorGlass: GpuMesh
+    private var lastCabinMirrorSeconds = -1f
+    private var lastCabinMirrorDistance = -1000f
     private val cabinShells = mutableMapOf<Pair<CabinLayout, Int>, Map<CabinGeometry.Material, GpuMesh>>()
     private val windshields = mutableMapOf<CabinLayout, GpuMesh>()
     private val instrumentPanels = mutableMapOf<CabinLayout, GpuMesh>()
@@ -145,6 +147,7 @@ class MasalikGLRenderer(
 
         shaders = ShaderLibrary()
         cabinDisplays = CabinDisplays()
+        lastCabinMirrorSeconds = -1f
         mirrorGlass = GpuMesh(CabinGeometry.panel(.299f, .095f, mirror = true))
         cabinShells.clear()
         windshields.clear()
@@ -232,7 +235,12 @@ class MasalikGLRenderer(
         // Pass A: Live Rear-View Mirror Render-to-Texture FBO Pass (Backwards-facing 3D camera!)
         val showLiveMirror = snap.graphicsQuality != com.masalik.yemen.game.GraphicsQuality.LOW && !snap.isLobbyOrGarage && !snap.isReplayMode && snap.rearMirrorEnabled &&
             (snap.cameraMode == CameraMode.COCKPIT || snap.cameraMode == CameraMode.HOOD || snap.cameraMode == CameraMode.CHASE_NEAR)
-        if (showLiveMirror && fxEngine.beginRearMirrorPass()) {
+        val refreshMirror = snap.cameraMode != CameraMode.COCKPIT ||
+            lastCabinMirrorSeconds < 0f || weatherAnimTime - lastCabinMirrorSeconds >= .055f ||
+            abs(centerDist - lastCabinMirrorDistance) > 20f
+        if (showLiveMirror && refreshMirror && fxEngine.beginRearMirrorPass()) {
+            lastCabinMirrorSeconds = weatherAnimTime
+            lastCabinMirrorDistance = centerDist
             GLES30.glClearColor(atmo.skyR, atmo.skyG, atmo.skyB, 1f)
             GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
 
@@ -2191,8 +2199,8 @@ class MasalikGLRenderer(
             weatherAnimTime), opaque = false)
 
         if (liveMirror && fxEngine.mirrorFboReady) {
-            val mirrorY = cabin.roof - .19f
-            val mirrorZ = cabin.glassTopZ + (cabin.glassBaseZ - cabin.glassTopZ) * .22f - .085f
+            val mirrorY = cabin.roof - .255f
+            val mirrorZ = cabin.glassTopZ + (cabin.glassBaseZ - cabin.glassTopZ) * .30f - .085f
             mount(0f, mirrorY, mirrorZ)
             Matrix.scaleM(modelMatrix, 0, .324f, .108f, .055f)
             drawMeshWithCurrentMatrix(roundedMesh, .102f, .12f, .13f, textures.whiteTex, 0f, 1f, 1f,

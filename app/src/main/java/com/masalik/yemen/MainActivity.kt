@@ -100,6 +100,9 @@ class MainActivity : ComponentActivity() {
                 override fun run() {
                     if (!viewModel.uiState.value.profileReady) { testHandler.postDelayed(this, 500L); return }
 
+                intent.getStringExtra("masalik_test_graphics")?.let { name ->
+                    runCatching { com.masalik.yemen.game.GraphicsQuality.valueOf(name) }.getOrNull()?.let { viewModel.setGraphicsQuality(it) }
+                }
                 intent.getStringExtra("masalik_test_vehicle")?.let { name ->
                     runCatching { com.masalik.yemen.game.VehicleId.valueOf(name) }.getOrNull()?.let { viewModel.confirmSelectVehicle(it) }
                 }

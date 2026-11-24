@@ -21,7 +21,7 @@ internal enum class CabinLayout(
     val driverX get() = width * .236f
     val wheelY get() = cowl - .015f
     val wheelZ get() = dashDepth - .195f
-    val clusterY get() = cowl + .12f
+    val clusterY get() = cowl + .139f
     val clusterZ get() = dashDepth + .135f
     val clusterWidth get() = width * .314f
 

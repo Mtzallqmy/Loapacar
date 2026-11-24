@@ -17,6 +17,7 @@ def find_label(label, click=False):
     deadline = time.monotonic() + 100
     while time.monotonic() < deadline:
         try:
+            adb("shell", "rm", "-f", "/sdcard/journey-ui.xml")
             adb("shell", "uiautomator", "dump", "--compressed", "/sdcard/journey-ui.xml", timeout=15)
             data = adb("shell", "cat", "/sdcard/journey-ui.xml")
             nodes = ElementTree.fromstring(data).iter("node")
@@ -36,12 +37,12 @@ def find_label(label, click=False):
 def capture(name):
     (out / f"{name}.png").write_bytes(adb("exec-out","screencap","-p"))
 
-def cockpit(slug, vehicle, weather, city, night=False):
+def cockpit(slug, vehicle, weather, city, night=False, quality="LOW"):
     adb("shell","pm","clear",package)
     adb("shell","am","start","-W","-n",package+"/com.masalik.yemen.MainActivity",
         "--ez","masalik_test_cockpit","true","--es","masalik_test_vehicle",vehicle,
         "--es","masalik_test_city",city,"--es","masalik_test_weather",weather,
-        "--ez","masalik_test_night",str(night).lower())
+        "--ez","masalik_test_night",str(night).lower(),"--es","masalik_test_graphics",quality)
     find_label("أدوات المركبة")
     if weather == "HEAVY_RAIN":
         find_label("أدوات المركبة",click=True)
@@ -74,7 +75,7 @@ try:
     find_label("إيقاف السائق الآلي",click=True)
     find_label("تشغيل السائق الآلي")
     print("Activated and released the automatic driver from the driving HUD",flush=True)
-    cockpit("cockpit-tourer-night","SHAHIQ","CLEAR","city_taiz_sabir",night=True)
+    cockpit("cockpit-tourer-night","SHAHIQ","CLEAR","city_taiz_sabir",night=True,quality="MEDIUM")
     cockpit("cockpit-pickup-rain","SAQR","HEAVY_RAIN","city_ibb_green")
     cockpit("cockpit-sedan","MADINA","CLEAR","city_sanaa_old")
     for slug, place, objective in [
@@ -100,5 +101,5 @@ try:
 finally:
     logs=adb("logcat","-d","MasalikShader:E","AndroidRuntime:E","*:S")
     (out/"android.log").write_bytes(logs)
-    if b"Shader compile error" in logs or b"Program link failed" in logs or b"FATAL EXCEPTION" in logs:
+    if b"Shader compile error" in logs or b"Program link failed" in logs or f"Process: {package}, PID:".encode() in logs:
         sys.exit("Android runtime or shader failure; inspect android.log")
