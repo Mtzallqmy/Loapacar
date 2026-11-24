@@ -837,7 +837,7 @@ class MasalikGLRenderer(
                     // Keep the working waterfront open to the sea.
                     if (side > 0 && abs(d - YemenJourneys.HARBOUR_M) < 115f) continue
                     if (abs(d - YemenJourneys.GATE_M) < 18f) continue
-                    val bHash = hash + (if (side > 0) 37 else 11)
+                    val bHash = (hash xor (dInt * (if (side > 0) 257 else 149))) and 0x7fffffff
                     val profile = com.masalik.yemen.game.CityArchitectureCatalog.profile(sample.regionId)
                     val buildingW = profile.buildingWidthM + (bHash % 4)
                     val buildingD = 12.0f + (bHash % 6)
@@ -851,7 +851,10 @@ class MasalikGLRenderer(
 
                     val isCoastal = sample.regionId == RegionId.COASTAL_ROAD || sample.regionId == RegionId.TIHAMA_PLAINS
                     val isMosqueLandmark = (dInt % 264 == 0) && (side == -1)
+                    val elevation = textures.quarterFacades[sample.regionId]
+                    val authored = elevation != null && !isMosqueLandmark && bHash % 8 != 0
                     val facadeTex = when {
+                        authored -> elevation!!
                         isMosqueLandmark -> textures.heritageMosqueTex
                         sample.regionId == RegionId.COASTAL_ROAD -> textures.adenHeritageTex
                         sample.regionId == RegionId.TIHAMA_PLAINS -> textures.zabidBrickTex
@@ -861,7 +864,7 @@ class MasalikGLRenderer(
                         else -> if (bHash % 3 == 0) textures.sanaaFacadeTex else textures.taizStoneTex
                     }
                     val isGlassTower = facadeTex == textures.modernTowerTex || facadeTex == textures.adenCoastalTowerTex
-                    val winGlow = nightGlow * (if (isGlassTower) 0.42f else if (isMosqueLandmark) 0.38f else 0.28f)
+                    val winGlow = nightGlow * (if (authored) .022f else if (isGlassTower) 0.42f else if (isMosqueLandmark) 0.38f else 0.28f)
                     val tintR = if (isGlassTower) 0.98f else if (bHash % 4 == 0) 0.99f else 0.94f
                     val tintG = if (isGlassTower) 0.98f else if (bHash % 4 == 1) 0.95f else 0.92f
                     val tintB = if (isGlassTower) 1.00f else if (bHash % 4 == 2) 0.90f else 0.88f
@@ -871,7 +874,7 @@ class MasalikGLRenderer(
                         buildingW, buildingH, buildingD,
                         tintR, tintG, tintB,
                         texId = facadeTex,
-                        uvScaleX = 1f, uvScaleY = when (sample.regionId) {
+                        uvScaleX = 1f, uvScaleY = if (authored) 1f else when (sample.regionId) {
                             RegionId.SHIBAM_HADRAMOUT -> floors * 0.25f
                             else -> floors * 0.5f
                         },
@@ -880,7 +883,7 @@ class MasalikGLRenderer(
                         roughness = if (isGlassTower) 0.16f else 0.74f
                     )
 
-                    if (abs(d - centerDistM) < 82f && snap.graphicsQuality != com.masalik.yemen.game.GraphicsQuality.LOW) {
+                    if (!authored && abs(d - centerDistM) < 82f && snap.graphicsQuality != com.masalik.yemen.game.GraphicsQuality.LOW) {
                         val frontLat = side * (sample.widthM * 0.5f + 3.65f)
                         val faceX = sample.x + sample.rightX * frontLat
                         val faceZ = sample.z + sample.rightZ * frontLat
@@ -896,7 +899,7 @@ class MasalikGLRenderer(
                             0.75f, 0.24f, 1.6f, 0.50f, 0.48f, 0.44f, roughness = 0.95f)
                     }
 
-                    if (abs(d - centerDistM) < 95f && snap.graphicsQuality != com.masalik.yemen.game.GraphicsQuality.LOW) {
+                    if (!authored && abs(d - centerDistM) < 95f && snap.graphicsQuality != com.masalik.yemen.game.GraphicsQuality.LOW) {
                         val streetLat = side * (sample.widthM * 0.5f + 3.60f)
                         val faceX = sample.x + sample.rightX * streetLat
                         val faceZ = sample.z + sample.rightZ * streetLat
@@ -988,7 +991,7 @@ class MasalikGLRenderer(
                     }
 
                     // Ground-level Modern Mall/Café Storefront OR Authentic Striped Souk Awning + Colorful Neon Sign Accent
-                    if (bHash % 2 == 0 && !isMosqueLandmark) {
+                    if (!authored && bHash % 2 == 0 && !isMosqueLandmark) {
                         val shopLat = side * (sample.widthM * 0.5f + 3.65f)
                         drawOrientedBox(
                             sample.x + sample.rightX * shopLat, sample.y + 1.95f, sample.z + sample.rightZ * shopLat,
@@ -1015,6 +1018,25 @@ class MasalikGLRenderer(
                         }
                     }
 
+                    if (authored && bHash % 3 != 0 && dInt % 44 == 0) {
+                        val blockLane = side * (48f + bHash % 6)
+                        if (!SabirRoad.overlaps(d, blockLane, 10f) && !(isCoastal && side > 0)) {
+                            val xx = sample.x+sample.rightX*blockLane
+                            val zz = sample.z+sample.rightZ*blockLane
+                            val hh = buildingH*(.94f+(bHash%5)*.105f)
+                            val ground = RoadSplineNetwork.terrainHeightAt(xx,zz,sample,blockLane)
+                            drawOrientedBox(xx,ground+hh*.5f,zz,sample.headingRad+.06f*(bHash%3-1),
+                                buildingW*1.28f,hh,buildingD*1.3f,.81f,.80f,.75f,texId=facadeTex)
+                        }
+                    }
+                    if (authored && abs(d-centerDistM)<110f && bHash%3==0) {
+                        val shop = lat-side*(buildingW*.5f+.12f)
+                        drawOrientedBox(sample.x+sample.rightX*shop,sample.y+3.22f,
+                            sample.z+sample.rightZ*shop,sample.headingRad,.28f,.68f,3.65f,
+                            .98f,.98f,.91f,texId=textures.districtSigns.getValue(sample.regionId),
+                            emR=nightGlow*.15f,emG=nightGlow*.14f,emB=nightGlow*.09f)
+                    }
+
                     // Sleek Curved-Arm Modern Boulevard Streetlamps on BOTH sides every 44m
                     if (dInt % 44 == 0 && (isModern || side == 1)) {
                         val poleLat = side * (sample.widthM * 0.5f + 0.85f)
@@ -1039,13 +1061,11 @@ class MasalikGLRenderer(
                         val palmLat = side * (sample.widthM * 0.5f + 2.25f)
                         val px = sample.x + sample.rightX * palmLat
                         val pz = sample.z + sample.rightZ * palmLat
-                        // Decorative curb planter + green hedge
-                        drawOrientedBox(px, sample.y + 0.32f, pz, sample.headingRad, 1.25f, 0.48f, 1.25f, 0.76f, 0.72f, 0.65f)
-                        drawOrientedBox(px, sample.y + 2.65f, pz, 0f, 0.34f, 5.1f, 0.34f, 0.46f, 0.33f, 0.20f)
-                        // Lush layered palm fronds radiating in 4 directions
-                        drawCone(px, sample.y + 5.55f, pz, 3.6f, 1.65f, 0.14f, 0.54f, 0.24f)
-                        drawOrientedBox(px, sample.y + 5.25f, pz, sample.headingRad + 0.35f, 4.4f, 0.24f, 0.85f, 0.16f, 0.58f, 0.26f)
-                        drawOrientedBox(px, sample.y + 5.25f, pz, sample.headingRad + 1.92f, 4.4f, 0.24f, 0.85f, 0.12f, 0.50f, 0.22f)
+                        val tree = if (isCoastal) palmMeshes else hillTreeMeshes
+                        val scale = .58f+(bHash%4)*.055f
+                        for ((mat,mesh) in tree) drawOrientedMesh(mesh,px,sample.y+.15f,pz,
+                            sample.headingRad+bHash%9,0f,0f,scale,scale,scale,mat.r,mat.g,mat.b,roughness=.94f)
+
                     }
                 }
 
@@ -1079,7 +1099,7 @@ class MasalikGLRenderer(
                     else -> hillTreeMeshes
                 }
                 val scale = .76f + (hash%13)*.043f
-                for ((m, mesh) in tree) drawOrientedMesh(mesh,tx,ty,tz,sample.headingRad+hash%11,
+                if (!SabirRoad.overlaps(d,lat,2f)) for ((m, mesh) in tree) drawOrientedMesh(mesh,tx,ty,tz,sample.headingRad+hash%11,
                     0f,0f,scale,scale,scale,m.r,m.g,m.b,roughness=.93f)
 
                 // Reflective Curve Chevron Signs (>>>) on outside of sharp mountain switchbacks!
@@ -1100,6 +1120,7 @@ class MasalikGLRenderer(
                 // Steel guardrail posts with amber night reflectors
                 for (gSide in intArrayOf(-1, 1)) {
                     val gLat = gSide * (sample.widthM * 0.5f + 0.60f)
+                    if (SabirRoad.overlaps(d,gLat,1.5f)) continue
                     drawOrientedBox(
                         sample.x + sample.rightX * gLat, sample.y + 0.46f, sample.z + sample.rightZ * gLat,
                         sample.headingRad, 0.24f, 0.86f, 1.4f, 0.86f, 0.84f, 0.80f,

@@ -24,6 +24,8 @@ import kotlin.random.Random
 class ProceduralTextures(private val assets: android.content.res.AssetManager) {
     private fun photo(name: String): Bitmap = assets.open("materials/$name.jpg").use { android.graphics.BitmapFactory.decodeStream(it) }
 
+    val quarterFacades: Map<com.masalik.yemen.game.RegionId,Int>
+    val districtSigns: Map<com.masalik.yemen.game.RegionId,Int>
     val whiteTex: Int
     val naturalRoads: Map<SurfaceType, Int>
     val roadAsphaltTex: Int
@@ -51,6 +53,16 @@ class ProceduralTextures(private val assets: android.content.res.AssetManager) {
     init {
         maxAnisotropy = queryMaxAnisotropy()
         whiteTex = uploadBitmap(createWhiteBitmap(), repeat = true)
+        val streets = mapOf(
+            com.masalik.yemen.game.RegionId.TAIZ_HIGHLANDS to ("taiz" to "سوق البن  •  جبل صبر"),
+            com.masalik.yemen.game.RegionId.IBB_GREEN_PEAKS to ("taiz" to "إب  •  طريق جبلة"),
+            com.masalik.yemen.game.RegionId.SANAA_HIGHLANDS to ("sanaa" to "باب اليمن  •  سوق الملح"),
+            com.masalik.yemen.game.RegionId.COASTAL_ROAD to ("aden" to "عدن  •  طريق الميناء"),
+            com.masalik.yemen.game.RegionId.SHIBAM_HADRAMOUT to ("shibam" to "شبام  •  طريق الوادي")
+        )
+        val elevations = streets.values.map { it.first }.distinct().associateWith { uploadBitmap(photo("quarter_"+it), false) }
+        quarterFacades = streets.mapValues { elevations.getValue(it.value.first) }
+        districtSigns = streets.mapValues { uploadBitmap(districtSign(it.value.second), false) }
         naturalRoads = SurfaceType.entries.filter { it != SurfaceType.ASPHALT }.associateWith { surface ->
             uploadBitmap(photo("route_" + surface.name.lowercase(java.util.Locale.ROOT)), repeat = true)
         }
@@ -73,6 +85,21 @@ class ProceduralTextures(private val assets: android.content.res.AssetManager) {
         autoGlassTex = uploadBitmap(createAutomotiveGlass(), repeat = false)
         rearPlateTex = uploadBitmap(createRearPlate(), repeat = false)
         contactShadowTex = uploadBitmap(createContactShadowBitmap(), repeat = false)
+    }
+
+    private fun districtSign(label: String): Bitmap {
+        val image = Bitmap.createBitmap(512, 96, Bitmap.Config.ARGB_8888)
+        val c=Canvas(image)
+        image.eraseColor(Color.rgb(28,65,58))
+        val ink=Paint(Paint.ANTI_ALIAS_FLAG)
+        ink.color=Color.rgb(226,223,195)
+        ink.style=Paint.Style.STROKE; ink.strokeWidth=3f
+        c.drawRoundRect(6f,6f,506f,90f,9f,9f,ink)
+        ink.style=Paint.Style.FILL; ink.textAlign=Paint.Align.CENTER
+        ink.typeface=android.graphics.Typeface.DEFAULT_BOLD
+        ink.textSize=42f
+        c.drawText(label,256f,63f,ink)
+        return image
     }
 
     private fun createAutomotiveGlass(): Bitmap {

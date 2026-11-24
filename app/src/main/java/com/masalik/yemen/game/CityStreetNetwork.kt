@@ -14,7 +14,15 @@ object CityStreetNetwork {
         if (!RoadSplineNetwork.sampleAt(hub.distanceM).isUrbanStreet) null
         else {
             val center = hub.distanceM.coerceIn(230f, RoadSplineNetwork.TOTAL_ROAD_LENGTH_M - 230f)
-            District(center, listOf(center - 140f, center, center + 140f))
+            val junctions = when (hub.id) {
+                "city_taiz_sabir" -> listOf(-140f,-64f,0f,140f)
+                "city_sanaa_old" -> listOf(-140f,-74f,0f,65f,140f)
+                "city_aden_mokha_coast" -> listOf(-160f,0f,155f)
+                "city_shibam_hadramout" -> listOf(-130f,-52f,32f,122f)
+                "city_ibb_green" -> listOf(-145f,-58f,0f,138f)
+                else -> listOf(-140f,0f,140f)
+            }
+            District(center, junctions.map { center+it })
         }
     }
 

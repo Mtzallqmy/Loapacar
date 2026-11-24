@@ -67,7 +67,19 @@ object YemenJourneys {
             21370f, VehicleId.SAHIL, GameModeCategory.CHALLENGE, TimeOfDayPreset.SUNRISE, WeatherPreset.CLEAR,
             RoadObjective(21480f, 2.85f, ObjectiveKind.GATE, "تابع السير بمحاذاة البحر"),
             RoadObjective(21590f, 2.85f, ObjectiveKind.GATE, "اقترب من الرصيف على مهل"),
-            RoadObjective(HARBOUR_M, 2.85f, ObjectiveKind.PARK, "اصطف عند المراكب وثبّت المكابح لثانيتين"))
+            RoadObjective(HARBOUR_M, 2.85f, ObjectiveKind.PARK, "اصطف عند المراكب وثبّت المكابح لثانيتين")),
+        trip("journey_shibam_bus","شبام","خط الحافلة · وادي حضرموت",
+            "استلم حافلة الخط وأضفها إلى مرآبك. خذ الركاب عبر مدخل المدينة الطينية وحافظ على راحتهم.",
+            18535f,VehicleId.HAFILAT,GameModeCategory.PASSENGER,TimeOfDayPreset.AFTERNOON,WeatherPreset.CLEAR,
+            RoadObjective(18570f,2.65f,ObjectiveKind.BOARD,"محطة الوادي · توقّف لصعود الركاب"),
+            RoadObjective(18640f,2.65f,ObjectiveKind.BOARD,"محطة السوق · اصعد بالدفعة الثانية"),
+            RoadObjective(18775f,2.65f,ObjectiveKind.ALIGHT,"محطة الحصن · أنزل الركاب")),
+        trip("journey_jibla_rain","جبلة","قيادة ليلية تحت المطر",
+            "اتبع علامات الطريق المبلل إلى مفرق جبلة. اعبر المعبر بهدوء ثم اصطف بجانب السوق.",
+            4350f,VehicleId.MADINA,GameModeCategory.CHALLENGE,TimeOfDayPreset.NIGHT,WeatherPreset.HEAVY_RAIN,
+            RoadObjective(4410f,2.65f,ObjectiveKind.GATE,"المطر كثيف · اتبع الحارة حتى المفرق"),
+            RoadObjective(4498f,2.65f,ObjectiveKind.GATE,"اعبر التقاطع بعد خلوّ المعبر"),
+            RoadObjective(4545f,2.65f,ObjectiveKind.PARK,"موقف جبلة · توقّف وثبّت السيارة"))
     )
     val taizRoutes = listOf(sabirTrip(true), sabirTrip(false))
     val all = taizRoutes + otherCities

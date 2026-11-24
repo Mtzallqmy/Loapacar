@@ -455,7 +455,7 @@ fun DrivingHudOverlay(
             if (hud.showMinimap) {
                 GpsMinimapCard(
                     distanceM = t.distanceAlongRoadM, lateral = t.lateralOffsetM, heading = t.headingRad,
-                    target = if (state.activeMission != null) MapPoint(state.objectiveM,state.objectiveLane) else null,
+                    target = if (state.activeMission != null) MapPoint(state.objectiveM,state.objectiveLane) else state.destination?.point,
                     expanded = minimapExpanded,
                     onToggleExpand = { minimapExpanded = !minimapExpanded }
                 )
@@ -478,6 +478,19 @@ fun DrivingHudOverlay(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     ToolChip("السائق الآلي", state.autoDriveStatus != null) { vm.toggleAutoDrive() }
                     ToolChip(state.autoDriveStyle.labelAr, false) { vm.cycleAutoDriveStyle() }
+                    if (state.activeMission == null) {
+                        var choosing by remember { mutableStateOf(false) }
+                        Box {
+                            ToolChip(state.destination?.label ?: "الوجهة", false) { choosing=true }
+                            androidx.compose.material3.DropdownMenu(expanded=choosing,onDismissRequest={ choosing=false }) {
+                                for (destination in com.masalik.yemen.game.DriveDestinations.all)
+                                    androidx.compose.material3.DropdownMenuItem(text={Text(destination.label)}, onClick={
+                                        vm.selectDestination(destination); choosing=false
+                                    })
+                                androidx.compose.material3.DropdownMenuItem(text={Text("دون وجهة")},onClick={vm.selectDestination(null); choosing=false})
+                            }
+                        }
+                    }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     HudIconPill(Icons.Default.Radio, "الراديو اليمني", "hud_radio_button", active = state.saveState.radioSettings.isPlaying) { vm.toggleRadioOpen() }

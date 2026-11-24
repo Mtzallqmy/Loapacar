@@ -17,7 +17,8 @@ enum class AutoDriveStatus(val labelAr: String) {
     FOLLOWING("يراعي المركبة الأمامية"),
     HOLDING("يثبّت السيارة"),
     WAITING("ينتظر عند الإشارة أو المعبر"),
-    ARRIVING("نهاية الطريق")
+    BLOCKED("المسار غير متاح · تولَّ القيادة"),
+    ARRIVING("الوصول إلى الوجهة")
 }
 
 internal data class AutoDriveCommand(val pedals: ControlInputs, val status: AutoDriveStatus)
@@ -32,7 +33,7 @@ internal class AutoDriver {
             car.distanceAlongRoadM < RoadSplineNetwork.TOTAL_ROAD_LENGTH_M - 29f
     }
 
-    fun step(car: VehiclePhysicsEngine, world: LivingWorldSimulation, style: AutoDriveStyle): AutoDriveCommand {
+    fun step(car: VehiclePhysicsEngine, world: LivingWorldSimulation, style: AutoDriveStyle, route: DriverRoute? = null, stopAtGoal: Boolean = true): AutoDriveCommand {
         if (car.forwardSpeedMs < -.08f) {
             return AutoDriveCommand(ControlInputs(brake = .85f), AutoDriveStatus.HOLDING)
         }
@@ -40,12 +41,19 @@ internal class AutoDriver {
         val sample = RoadSplineNetwork.sampleAt(distance)
         val speed = car.forwardSpeedMs.coerceAtLeast(0f)
         val lookAhead = (6f + speed * .66f).coerceIn(6f, 18f)
-        val lead = RoadSplineNetwork.sampleAt(distance + lookAhead)
-        val lane = laneAt(distance + lookAhead)
+        val guide = route?.guide(MapPoint(distance,car.lateralOffsetM),lookAhead)
+        if (guide != null && guide.error > 7.5f)
+            return AutoDriveCommand(ControlInputs(brake=.88f),AutoDriveStatus.BLOCKED)
+        val lead = RoadSplineNetwork.sampleAt(guide?.aim?.d ?: (distance+lookAhead))
+        val lane = guide?.aim?.l ?: laneAt(distance + lookAhead)
         val dx = lead.x + lead.rightX * lane - car.posX
         val dz = lead.z + lead.rightZ * lane - car.posZ
         val carHeading = sample.headingRad + car.headingOffsetFromRoadRad
         val side = dx * cos(carHeading) - dz * sin(carHeading)
+        val forward = dx*sin(carHeading)+dz*cos(carHeading)
+        if (guide != null && forward < -2.5f && guide.remaining > 5f)
+            return AutoDriveCommand(ControlInputs(brake=.88f),AutoDriveStatus.BLOCKED)
+        val direction = if (cos(car.headingOffsetFromRoadRad) >= 0f) 1f else -1f
         val steerAngle = atan(2f * car.spec.wheelbaseM * side / (dx * dx + dz * dz).coerceAtLeast(1f))
         val steering = (steerAngle / car.steeringLimitRad(speed * 3.6f)).coerceIn(-1f, 1f)
 
@@ -63,6 +71,8 @@ internal class AutoDriver {
             (if (sample.isUrbanStreet) style.townKmh else style.openKmh) / 3.6f * sqrt(grip),
             sqrt(1.8f * grip / turn)
         )
+        if (guide?.tight == true || abs(car.headingOffsetFromRoadRad) in .45f..2.6f) target=minOf(target,2.6f)
+        if (sample.gradePct*direction < -3.5f) target *= .78f
         val brakeRate = 1.6f + grip
         val halfLength = car.spec.bodyLengthM * .5f
         var status = AutoDriveStatus.CRUISING
@@ -79,24 +89,29 @@ internal class AutoDriver {
             }
         }
 
-        limit(RoadSplineNetwork.TOTAL_ROAD_LENGTH_M - 28f - distance, 0f, AutoDriveStatus.ARRIVING)
+        if (guide != null && stopAtGoal) {
+            limit(guide.remaining-.55f,0f,AutoDriveStatus.ARRIVING)
+            if (route!!.goal.distance(MapPoint(distance,car.lateralOffsetM)) < 1.1f)
+                return AutoDriveCommand(ControlInputs(brake=.9f),AutoDriveStatus.ARRIVING)
+        } else if (guide == null)
+            limit(RoadSplineNetwork.TOTAL_ROAD_LENGTH_M - 28f - distance, 0f, AutoDriveStatus.ARRIVING)
         for (signal in world.trafficSignals) {
-            val gap = signal.def.distanceM - distance
-            if (gap in 0f..85f && (signal.phase != TrafficSignalPhase.GREEN || signal.pedestriansCrossing)) {
+            val gap = (signal.def.distanceM - distance)*direction
+            if (abs(car.lateralOffsetM)<sample.widthM*.55f && gap in 0f..85f && (signal.phase != TrafficSignalPhase.GREEN || signal.pedestriansCrossing)) {
                 limit(gap - halfLength - 3f, 0f, AutoDriveStatus.WAITING)
             }
         }
         for (pedestrian in world.pedestrians) {
-            val gap = pedestrian.distanceM - distance
+            val gap = (pedestrian.distanceM - distance)*direction
             if (pedestrian.isCrosswalkPedestrian && gap in -1f..50f &&
-                abs(pedestrian.lateralOffsetM - laneAt(pedestrian.distanceM)) < 2.4f) {
+                abs(pedestrian.lateralOffsetM - (if (guide != null) lane else laneAt(pedestrian.distanceM))) < 2.4f) {
                 limit(gap - halfLength - 3f, 0f, AutoDriveStatus.WAITING)
             }
         }
         for (other in world.trafficVehicles) {
-            val gap = other.distanceM - distance
-            if (gap in 0f..75f && abs(other.laneOffsetM - laneAt(other.distanceM)) < 2f) {
-                limit(gap - halfLength - 5.5f, (other.speedMs * other.direction).coerceAtLeast(0f),
+            val gap = (other.distanceM - distance)*direction
+            if (gap in 0f..75f && abs(other.laneOffsetM - (if (guide != null) lane else laneAt(other.distanceM))) < 2f) {
+                limit(gap - halfLength - 5.5f, (other.speedMs * other.direction * direction).coerceAtLeast(0f),
                     AutoDriveStatus.FOLLOWING)
             }
         }

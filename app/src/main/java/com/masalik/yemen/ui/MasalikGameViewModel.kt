@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.masalik.yemen.audio.MasalikAudioEngine
 import com.masalik.yemen.data.MasalikDatabase
 import com.masalik.yemen.data.MasalikRepository
+import com.masalik.yemen.game.DriveDestination
+import com.masalik.yemen.game.DriverRoute
+import com.masalik.yemen.game.MapPoint
 import com.masalik.yemen.game.AudioMixerSettings
 import com.masalik.yemen.game.AutomaticShifterState
 import com.masalik.yemen.game.CameraMode
@@ -66,6 +69,7 @@ data class MasalikUiState(
     val cleanCinematicHud: Boolean = false,
     val previewVehicleId: VehicleId = VehicleId.SHAHIQ,
     val activeMission: MissionDefinition? = null,
+    val destination: DriveDestination? = null,
     val autoDriveStyle: AutoDriveStyle = AutoDriveStyle.SCENIC,
     val autoDriveStatus: AutoDriveStatus? = null,
     val missionTimeRemainingSec: Int = 0,
@@ -120,6 +124,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
 
     private var worldTimeHours: Float = 9.0f
     private var run: MissionRun? = null
+    private var driverRoute: DriverRoute? = null
     private val autoDriver = AutoDriver()
     private var autoDriveStatus: AutoDriveStatus? = null
     private var autoDriveHoldSec = 0f
@@ -410,13 +415,13 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
                         autoDriveHoldSec -= tick.toFloat()
                         com.masalik.yemen.game.AutoDriveCommand(ControlInputs(brake = .85f), AutoDriveStatus.HOLDING)
                     }
-                    else -> autoDriver.step(physics, livingWorld, state.autoDriveStyle)
+                    else -> autoDriver.step(physics, livingWorld, state.autoDriveStyle, driverRoute, run?.target?.isStop != false)
                 }
                 if (automated != null) autoDriveStatus = automated.status
                 lastTelemetry = physics.step(tick.toFloat(), automated?.pedals ?: manualInputs, livingWorld)
                 if (automated != null) {
                     if (!physics.engineRunning || physics.lastCollisionImpulse > 7f ||
-                        kotlin.math.abs(physics.headingOffsetFromRoadRad) > .90f) {
+                        (driverRoute == null && kotlin.math.abs(physics.headingOffsetFromRoadRad) > .90f)) {
                         stopAutoDrive()
                         _uiState.update { it.copy(toastMessageAr = "توقّف السائق الآلي · تولَّ القيادة") }
                     } else if (physics.lastCollisionImpulse > 2f) {
@@ -424,9 +429,16 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
                     }
                 }
                 val journey = run
+                if (journey?.target?.isStop == true && automated?.status == AutoDriveStatus.ARRIVING &&
+                    kotlin.math.abs(physics.forwardSpeedMs)<.12f &&
+                    driverRoute?.goal?.distance(MapPoint(physics.distanceAlongRoadM,physics.lateralOffsetM))?.let { it < 1.2f } == true) {
+                    inputHandbrake = true
+                    stopAutoDrive()
+                }
                 val oldStage = journey?.stage
                 journey?.advance(tick.toFloat(), lastTelemetry, physics.headingOffsetFromRoadRad, physics.lastCollisionImpulse)
                 if (journey != null && journey.stage != oldStage && !journey.finished) {
+                    if (autoDriveStatus != null) planRoute()
                     if (journey.mission.id == "story_2" && journey.stage == 2) setWeather(WeatherPreset.LIGHT_RAIN)
                     saveSnapshotNow()
                 }
@@ -676,7 +688,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     @Synchronized fun startMission(mission: MissionDefinition) {
         stopAutoDrive()
         val current = _uiState.value.saveState
-        val chosenVehicle = if (mission.recommendedVehicleId in current.unlockedVehicles) {
+        val chosenVehicle = if (mission.id == "journey_shibam_bus" || mission.recommendedVehicleId in current.unlockedVehicles) {
             mission.recommendedVehicleId
         } else current.selectedVehicleId
 
@@ -695,6 +707,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
 
         val nextSave = current.copy(
             selectedVehicleId = chosenVehicle,
+            unlockedVehicles = if (chosenVehicle in current.unlockedVehicles) current.unlockedVehicles else current.unlockedVehicles + chosenVehicle,
             weather = mission.weatherPreset,
             timeOfDay = mission.timeOfDayPreset,
             worldTimeHours = worldTimeHours,
@@ -934,17 +947,31 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             stopAutoDrive()
             return
         }
-        if (run != null || _uiState.value.activeModal != ActiveModal.DRIVING) {
-            _uiState.update { it.copy(toastMessageAr = "السائق الآلي متاح أثناء التجوال الحر") }
+        if ((run != null && run?.mission?.id?.startsWith("journey_") != true) || _uiState.value.activeModal != ActiveModal.DRIVING) {
+            _uiState.update { it.copy(toastMessageAr = "السائق الآلي متاح في التجوال الحر ورحلات اليمن") }
             return
         }
-        if (inputHandbrake || !autoDriver.canEngage(physics)) {
+        planRoute()
+        val ready = if (driverRoute == null) autoDriver.canEngage(physics) else
+            physics.engineRunning && physics.transmissionMode == "auto" && physics.autoShifter == AutomaticShifterState.D
+        if (inputHandbrake || !ready) {
             _uiState.update { it.copy(toastMessageAr = "شغّل المحرك، اختر D، حرّر الجلنط ووجّه السيارة مع الطريق في الحارة اليمنى") }
             return
         }
         physics.cruiseControlEnabled = false
         autoDriveStatus = AutoDriveStatus.CRUISING
         _uiState.update { it.copy(autoDriveStatus = autoDriveStatus) }
+    }
+
+    @Synchronized fun selectDestination(destination: DriveDestination?) {
+        _uiState.update { it.copy(destination = destination) }
+        if (autoDriveStatus != null) planRoute()
+    }
+
+    private fun planRoute() {
+        val stop = run?.target
+        val goal = if (stop != null) MapPoint(stop.distance,stop.lane) else _uiState.value.destination?.point
+        driverRoute = goal?.let { DriverRoute(MapPoint(physics.distanceAlongRoadM,physics.lateralOffsetM),it) }
     }
 
     @Synchronized fun cycleAutoDriveStyle() {
@@ -958,6 +985,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         if (autoDriveStatus == null) return
         autoDriveStatus = null
         autoDriveHoldSec = 0f
+        driverRoute = null
         _uiState.update { it.copy(autoDriveStatus = null) }
     }
 
