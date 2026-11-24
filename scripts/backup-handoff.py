@@ -1,6 +1,7 @@
 """Cross-package transfer through Android's document picker. Only run on disposable CI devices."""
 import json
 import re
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -50,7 +51,7 @@ def export(name):
         files=adb("shell","find","/sdcard/Download","-type","f").decode().splitlines()
         backup=next((f for f in sorted(files, key=lambda v: ("(" in v),reverse=True) if "masalik_yemen_backup" in f),None)
         if backup:
-            raw=adb("shell","cat",backup)
+            raw=adb("shell","cat",shlex.quote(backup))
             try: state=json.loads(raw)
             except (ValueError,UnicodeError):time.sleep(.5);continue
             if name=="cities-restored.json" and "pedalExponent" not in state["hudSettings"]:

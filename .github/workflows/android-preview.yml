@@ -1,7 +1,7 @@
 name: Android preview
 on:
   push:
-    paths: ["app/**", "gradle/**", "*.kts", "gradle.properties", ".github/workflows/android-preview.yml"]
+    paths: ["app/**", "scripts/**", "gradle/**", "*.kts", "gradle.properties", ".github/workflows/android-preview.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -53,6 +53,31 @@ jobs:
           git worktree add --detach "$RUNNER_TEMP/cockpit34" de609f57b350d4dc46f2b7e35e388175a9a6a120
           sed -i 's/applicationIdSuffix = ".preview"/applicationIdSuffix = ".legacy34"/g' "$RUNNER_TEMP/cockpit34/app/build.gradle.kts"
           (cd "$RUNNER_TEMP/cockpit34" && ./gradlew :app:assembleDebug)
+          mkdir -p emulator-apks
+          cp app/build/outputs/apk/debug/app-debug.apk emulator-apks/current.apk
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk emulator-apks/touch.apk
+          cp "$RUNNER_TEMP/cockpit34/app/build/outputs/apk/debug/app-debug.apk" emulator-apks/legacy.apk
+          cp app/build/outputs/apk/journeys/app-journeys.apk emulator-apks/cities.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: emulator-apks
+          path: emulator-apks/
+          retention-days: 2
+
+  play-on-android:
+    needs: test-and-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 46
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [touch, migration, benchmark, journeys, soak]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: emulator-apks
+          path: emulator-apks
       - name: Enable KVM for the Android emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -71,25 +96,18 @@ jobs:
             adb shell wm density 160
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
-            adb install app/build/outputs/apk/debug/app-debug.apk
-            adb install "$RUNNER_TEMP/cockpit34/app/build/outputs/apk/debug/app-debug.apk"
-            adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb install emulator-apks/current.apk
             mkdir -p journey-captures
-            adb shell am instrument -w com.masalik.yemen.preview.test/com.masalik.yemen.TouchDriveProbe > journey-captures/touch.txt
-            grep -q 'PASS two pointers' journey-captures/touch.txt
-            python3 scripts/backup-handoff.py
-            python3 scripts/drive-benchmark.py
-            python3 scripts/smoke-journeys.py
-            if [ "${{ contains(github.event.head_commit.message, '[cities-preview]') }}" = "true" ]; then bash scripts/soak-package.sh; fi
+            bash scripts/android-check.sh ${{ matrix.check }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Android-journey-captures
+          name: Android-captures-${{ matrix.check }}
           path: journey-captures/
           if-no-files-found: ignore
 
   publish-cities-preview:
-    needs: test-and-build
+    needs: play-on-android
     if: github.ref == 'refs/heads/feat/sayyarati-4-cities' && contains(github.event.head_commit.message, '[cities-preview]')
     runs-on: ubuntu-24.04
     permissions:
@@ -102,7 +120,8 @@ jobs:
           path: verified
       - uses: actions/download-artifact@v4
         with:
-          name: Android-journey-captures
+          pattern: Android-captures-*
+          merge-multiple: true
           path: captures
       - name: Publish verified preview and evidence
         env:
