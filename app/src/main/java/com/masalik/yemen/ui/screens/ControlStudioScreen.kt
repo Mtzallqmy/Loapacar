@@ -424,6 +424,10 @@ fun ControlStudioScreen(
                         }
                     }
 
+                    Text("سرعة رجوع المقود إلى الوسط", color = MasalikIvory)
+                    Slider(value = sw.returnRate, onValueChange = { onUpdateHud(hudSettings.copy(smartWheel = sw.copy(returnRate = it))) }, valueRange = .45f..1.8f)
+                    Text("تدرّج ضغط الدواسات", color = MasalikIvory)
+                    Slider(value = hudSettings.pedalExponent, onValueChange = { onUpdateHud(hudSettings.copy(pedalExponent = it)) }, valueRange = .65f..2f)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         ToggleCard("إرجاع تلقائي واقعي للمنتصف", sw.autoCenterEnabled, Modifier.weight(1f)) {
                             onUpdateHud(hudSettings.copy(smartWheel = sw.copy(autoCenterEnabled = it)))

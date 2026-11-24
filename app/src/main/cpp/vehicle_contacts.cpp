@@ -6,15 +6,15 @@
 extern "C" JNIEXPORT void JNICALL
 Java_com_masalik_yemen_game_TireSolver_solve(JNIEnv *env, jobject, jfloatArray input, jfloatArray output) {
     // One call per simulation tick for all four tires. Kotlin owns the two reusable arrays.
-    float p[18], result[7] = {};
-    env->GetFloatArrayRegion(input, 0, 18, p);
+    float p[20], result[7] = {};
+    env->GetFloatArrayRegion(input, 0, 20, p);
     if (env->ExceptionCheck()) return;
     const float mass = p[0], wheelbase = p[1], track = p[2], height = p[3];
     const float speed = p[4], steering = p[5], acceleration = p[6];
     const float drive = p[7], brake = p[8];
     const bool awd = p[13] > .5f, abs = p[14] > .5f, tcs = p[15] > .5f, esc = p[16] > .5f;
     const float total = mass * 9.81f;
-    const float frontFraction = std::clamp(.53f - acceleration * height / (9.81f * wheelbase), .25f, .76f);
+    const float frontFraction = std::clamp(p[18] - acceleration * height / (9.81f * wheelbase), .25f, .76f);
     const float lateralAccel = speed * speed * std::tan(steering) / wheelbase;
     const float leftFraction = std::clamp(.5f + lateralAccel * height / (9.81f * track), .12f, .88f);
     for (int wheel = 0; wheel < 4; ++wheel) {
@@ -25,7 +25,7 @@ Java_com_masalik_yemen_game_TireSolver_solve(JNIEnv *env, jobject, jfloatArray i
         const float grip = p[9 + wheel];
         const float lateral = std::min(std::fabs(lateralAccel) * mass * share, normal * grip * .97f);
         const float capacity = longitudinal_capacity(normal, grip, lateral);
-        const float driveRequest = drive * (awd ? .25f : (front ? 0.f : .5f));
+        const float driveRequest = drive * (awd ? .25f : (front == (p[19] > .5f) ? .5f : 0.f));
         const float brakeRequest = brake * (front ? .31f : .19f);
         const bool spin = std::fabs(driveRequest) > capacity;
         const bool lock = brakeRequest > capacity && std::fabs(speed) > 1.f;

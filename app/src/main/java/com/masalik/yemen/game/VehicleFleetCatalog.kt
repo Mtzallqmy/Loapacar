@@ -81,7 +81,7 @@ object VehicleFleetCatalog {
             fuelTankLiters = 110f,
             baseFuelBurnLPerMin = 0.52f,
             idleRpm = 750f,
-            redlineRpm = 5600f,
+            redlineRpm = 4500f,
             engineBaseFreqHz = 44f,
             forwardGearsCount = 5,
             maxBrakeForceN = 18200f,

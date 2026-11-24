@@ -75,6 +75,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import kotlin.math.pow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
@@ -629,6 +630,7 @@ fun DrivingHudOverlay(
                 height = (118f * pedalScale).dp,
                 tag = "gas_pedal",
                 hapticEnabled = hud.smartWheel.hapticFeedback,
+                exponent = hud.pedalExponent,
                 onLevelChanged = { lv ->
                     if (lv > 0f && gasLevel == 0f && hud.smartWheel.hapticFeedback) {
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -656,6 +658,7 @@ fun DrivingHudOverlay(
                 height = (88f * pedalScale).dp,
                 tag = "brake_pedal",
                 hapticEnabled = hud.smartWheel.hapticFeedback,
+                exponent = hud.pedalExponent,
                 onLevelChanged = { lv ->
                     if (lv > 0f && brakeLevel == 0f && hud.smartWheel.hapticFeedback) {
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -798,6 +801,7 @@ private fun AnalogAluminumPedal(
     height: Dp,
     tag: String,
     hapticEnabled: Boolean,
+    exponent: Float = 1f,
     onLevelChanged: (Float) -> Unit
 ) {
     val active = level > 0.01f
@@ -816,12 +820,12 @@ private fun AnalogAluminumPedal(
                 shape = RoundedCornerShape(16.dp)
             )
             .testTag(tag)
-            .pointerInput(hapticEnabled) {
+            .pointerInput(hapticEnabled, exponent) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     fun calcLevel(yPx: Float): Float {
                         val fracFromBottom = (1f - (yPx / size.height.coerceAtLeast(1))).coerceIn(0f, 1f)
-                        return (0.35f + fracFromBottom * 0.65f).coerceIn(0.35f, 1f)
+                        return .035f + .965f * fracFromBottom.pow(exponent.coerceIn(.65f, 2f))
                     }
                     try {
                     onLevelChanged(calcLevel(down.position.y))

@@ -212,14 +212,20 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    @Synchronized fun onPauseLifecycle() {
-        stopAutoDrive()
-        gyroController.stop()
-        audioEngine.stop()
+    @Synchronized fun releaseDriverInputs() {
         inputThrottle = 0f
         inputBrake = 0f
         inputSteerNorm = 0f
         inputClutch = 0f
+        audioEngine.hornActive = false
+        stopAutoDrive()
+    }
+
+    @Synchronized fun onPauseLifecycle() {
+        stopAutoDrive()
+        gyroController.stop()
+        audioEngine.stop()
+        releaseDriverInputs()
         if (_uiState.value.profileReady) saveSnapshotNow()
     }
 

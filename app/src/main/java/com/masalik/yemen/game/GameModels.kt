@@ -77,9 +77,9 @@ enum class WeatherPreset(val labelAr: String) {
 
 @Serializable
 enum class DrivingRealismMode(val labelAr: String) {
-    ARCADE("سهل (أركيد)"),
-    SPORT("رياضي متوازن"),
-    SIMULATION("محاكاة واقعية")
+    ARCADE("سهل"),
+    SPORT("متوازن"),
+    SIMULATION("محاكاة")
 }
 
 @Serializable
@@ -259,6 +259,7 @@ data class SmartWheelSettings(
     val rotationRangeDeg: Int = 540,
     val sensitivity: Float = 1.05f,
     val autoCenterEnabled: Boolean = true,
+    val returnRate: Float = 1f,
     val deadZoneDeg: Float = 2.5f,
     val steeringAssist: Boolean = true,
     val wheelStyle: SteeringWheelStyle = SteeringWheelStyle.EUROPEAN_LUXURY,
@@ -278,6 +279,7 @@ data class HudCustomizationSettings(
     val controlMode: TouchControlMode = TouchControlMode.WHEEL,
     val layoutPresetName: String = "الوضع المتوازن",
     val mirrorControls: Boolean = false,
+    val pedalExponent: Float = 1.25f,
     val buttonScale: Float = 1.0f,
     val hudOpacity: Float = 0.92f,
     val showMinimap: Boolean = true,

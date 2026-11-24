@@ -147,9 +147,25 @@ class MainActivity : ComponentActivity() {
         viewModel.onPauseLifecycle()
     }
 
+    override fun onGenericMotionEvent(event: android.view.MotionEvent): Boolean {
+        if (event.isFromSource(android.view.InputDevice.SOURCE_JOYSTICK) &&
+            viewModel.uiState.value.activeModal == ActiveModal.DRIVING) {
+            fun axis(id: Int): Float {
+                val v = event.getAxisValue(id)
+                val flat = event.device?.getMotionRange(id, event.source)?.flat ?: .04f
+                return if (kotlin.math.abs(v) <= flat) 0f else v
+            }
+            viewModel.inputSteerNorm = axis(android.view.MotionEvent.AXIS_X).coerceIn(-1f, 1f)
+            viewModel.inputThrottle = maxOf(axis(android.view.MotionEvent.AXIS_RTRIGGER), axis(android.view.MotionEvent.AXIS_GAS)).coerceIn(0f,1f)
+            viewModel.inputBrake = maxOf(axis(android.view.MotionEvent.AXIS_LTRIGGER), axis(android.view.MotionEvent.AXIS_BRAKE)).coerceIn(0f,1f)
+            return true
+        }
+        return super.onGenericMotionEvent(event)
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) hideSystemBarsImmersive()
+        if (hasFocus) hideSystemBarsImmersive() else viewModel.releaseDriverInputs()
     }
 
     @Suppress("DEPRECATION")

@@ -157,7 +157,7 @@ fun SmartSteeringWheel(
     val hasPaddles = style == SteeringWheelStyle.EUROPEAN_LUXURY || style == SteeringWheelStyle.JAPANESE_SPORT
 
     // Realistic speed-proportional spring auto-centering when the driver releases the wheel
-    LaunchedEffect(isGrabbed, settings.autoCenterEnabled, style, halfLock) {
+    LaunchedEffect(isGrabbed, settings.autoCenterEnabled, settings.returnRate, style, halfLock) {
         if (!isGrabbed && settings.autoCenterEnabled && abs(localAngleDeg) > 0.25f) {
             var lastNanos = 0L
             while (!isGrabbed && abs(localAngleDeg) > 0.45f) {
@@ -170,7 +170,7 @@ fun SmartSteeringWheel(
                     lastNanos = now
                     // Caster self-aligning torque strengthens with vehicle speed
                     val speedBoost = 0.65f + (speedKmh / 55f).coerceIn(0f, 1.55f)
-                    val decay = (style.returnSpeed * speedBoost * 2.15f * dt).coerceAtMost(0.42f)
+                    val decay = (settings.returnRate.coerceIn(.45f, 1.8f) * style.returnSpeed * speedBoost * 2.15f * dt).coerceAtMost(0.42f)
                     val next = localAngleDeg * (1f - decay)
                     localAngleDeg = if (abs(next) < 0.7f) 0f else next
                     val norm = if (abs(localAngleDeg) < settings.deadZoneDeg) 0f else (localAngleDeg / halfLock).coerceIn(-1f, 1f)

@@ -6,7 +6,7 @@ import kotlin.math.sin
 
 class TireSolver {
     companion object { init { System.loadLibrary("mycar_contacts") } }
-    private val input = FloatArray(18)
+    private val input = FloatArray(20)
     private val output = FloatArray(7)
     private external fun solve(input: FloatArray, output: FloatArray)
 
@@ -14,7 +14,11 @@ class TireSolver {
              mass: Float, speed: Float, steer: Float, acceleration: Float, drive: Float,
              braking: Float, fourWheel: Boolean, assists: ElectronicAssistsState): FloatArray {
         input[0]=mass; input[1]=spec.wheelbaseM; input[2]=spec.trackWidthM
-        input[3]=spec.bodyHeightM * .35f
+        val calibration = Powertrain.forVehicle(spec.id)
+        val load = (mass-spec.baseMassKg).coerceAtLeast(0f)
+        input[3]=(spec.baseMassKg*calibration.cgHeight + load*(spec.bodyHeightM*.56f))/mass
+        input[18]=(spec.baseMassKg*calibration.frontWeight + load*.22f)/mass
+        input[19]=if (calibration.frontDriven) 1f else 0f
         input[4]=speed; input[5]=steer; input[6]=acceleration
         input[7]=drive; input[8]=braking
         for (wheel in 0..3) {

@@ -115,6 +115,12 @@ class VehiclePhysicsEngine {
     var trafficViolationWarningAr: String? = null
     private var violationClearTimerSec: Float = 0f
 
+    private var transmission = Powertrain.forVehicle(vehicleId)
+    private var cachedRatio = -1f
+    private var cachedPower = -1f
+    private var cachedSpeed = 0f
+    private var shiftCooldown = 0f
+    private var hillHold = 0f
     private var currentRpm: Float = 800f
     private var activeGearLabel: String = "D1"
     private var prevThrottle: Float = 0f
@@ -135,6 +141,10 @@ class VehiclePhysicsEngine {
     ) {
         vehicleId = id
         spec = VehicleFleetCatalog.specOf(id)
+        transmission = Powertrain.forVehicle(id)
+        cachedRatio = -1f
+        shiftCooldown = 0f
+        prevGearNum = 1
         customization = custom
         diffLockActive = false
         drivetrainMode = spec.defaultDrivetrain
@@ -152,6 +162,9 @@ class VehiclePhysicsEngine {
     fun resetToRoad(distanceM: Float, laneOffsetM: Float = 2.55f, headingOffset: Float = 0f) {
         distanceAlongRoadM = distanceM.coerceIn(10f, RoadSplineNetwork.TOTAL_ROAD_LENGTH_M - 20f)
         lateralOffsetM = laneOffsetM
+        shiftCooldown = 0f
+        hillHold = 0f
+        prevGearNum = 1
         suspension.reset()
         previousEngagement = 0f
         lastAcceleration = 0f
@@ -305,13 +318,16 @@ class VehiclePhysicsEngine {
             GearRatioPreset.HIGHWAY -> 0.86f
         } * if (drivetrainMode == DrivetrainMode.FOUR_L) 1.65f else 1.0f
 
-        val maxSpeedMs = ((34f + spec.maxPowerHp * 0.055f) * transMult *
-            when (customization.gearPreset) {
-                GearRatioPreset.CRAWLER -> 0.82f
-                GearRatioPreset.BALANCED -> 1.0f
-                GearRatioPreset.HIGHWAY -> 1.14f
-            } * if (drivetrainMode == DrivetrainMode.FOUR_L) 0.48f else 1.0f)
-
+        val power = transMult * engineMult
+        if (gearMultiplier != cachedRatio || power != cachedPower) {
+            cachedRatio = gearMultiplier
+            cachedPower = power
+            cachedSpeed = transmission.topSpeedMs(spec, gearMultiplier, power)
+        }
+        val maxSpeedMs = cachedSpeed
+        val wheelRpm = abs(forwardSpeedMs) * 60f / (2f * PI.toFloat() * spec.wheelRadiusM)
+        val inputRpm = wheelRpm * transmission.finalDrive * gearMultiplier
+        shiftCooldown = (shiftCooldown - dt).coerceAtLeast(0f)
         val currentGearNum: Int
         val driveDir: Int
         if (transmissionMode == "auto") {
@@ -332,8 +348,10 @@ class VehiclePhysicsEngine {
                     driveDir = -1
                 }
                 AutomaticShifterState.D -> {
-                    val ratio = (abs(forwardSpeedMs) / maxSpeedMs).coerceIn(0f, 1f)
-                    currentGearNum = (1 + (ratio * (spec.forwardGearsCount - 1)).toInt()).coerceIn(1, spec.forwardGearsCount)
+                    val previous = prevGearNum.coerceIn(1, spec.forwardGearsCount)
+                    currentGearNum = if (shiftCooldown > 0f) previous else
+                        transmission.nextGear(previous, spec.forwardGearsCount, inputRpm, spec.redlineRpm, throttle)
+                    if (currentGearNum != previous) shiftCooldown = .32f
                     activeGearLabel = if (drivetrainMode == DrivetrainMode.FOUR_L) "L$currentGearNum" else "D$currentGearNum"
                     driveDir = 1
                 }
@@ -352,13 +370,8 @@ class VehiclePhysicsEngine {
             }
         }
 
-        val ratio = when {
-            currentGearNum < 0 -> 3.15f
-            currentGearNum == 0 -> 0f
-            else -> (3.7f * Math.pow(.75, (currentGearNum - 1).toDouble())).toFloat()
-        } * gearMultiplier
-        val wheelRpm = abs(forwardSpeedMs) * 60f / (2f * PI.toFloat() * spec.wheelRadiusM)
-        val shaftRpm = wheelRpm * ratio * 4.1f
+        val ratio = transmission.ratio(currentGearNum, spec.forwardGearsCount) * gearMultiplier
+        val shaftRpm = wheelRpm * ratio * transmission.finalDrive
         val manual = transmissionMode == "manual"
         val pedalCoupling = ((.91f - input.clutch) / .67f).coerceIn(0f,1f)
         val coupling = if (currentGearNum == 0) 0f else if (manual) pedalCoupling else 1f
@@ -370,10 +383,11 @@ class VehiclePhysicsEngine {
         val canDeliverPower = engineRunning && fuelLiters > 0.01f && driveDir != 0
         if (canDeliverPower) {
             val engineHealthFactor = 0.55f + 0.45f * (damage.engineHealthPct / 100f)
-            val curve = (.71f + .29f * sin((currentRpm / spec.redlineRpm).coerceIn(0f,1f) * PI.toFloat()))
-            val torqueN = spec.maxEngineTorqueNm * curve * engineMult * ratio * 4.1f * .86f /
+            val curve = transmission.torqueFraction(currentRpm, spec.redlineRpm)
+            val torqueN = spec.maxEngineTorqueNm * curve * power * ratio * transmission.finalDrive * .86f /
                 spec.wheelRadiusM * throttle * engineHealthFactor * coupling
-            driveForceN = torqueN * driveDir
+            driveForceN = torqueN * driveDir * (if (shiftCooldown > .22f) .55f else 1f)
+            if (shaftRpm >= spec.redlineRpm) driveForceN = 0f
             // Speed governor
             if (driveDir > 0 && forwardSpeedMs >= maxSpeedMs) driveForceN = 0f
             if (driveDir < 0 && forwardSpeedMs <= -14f) driveForceN = 0f
@@ -385,6 +399,11 @@ class VehiclePhysicsEngine {
         if (input.handbrake || (!manual && autoShifter == AutomaticShifterState.P)) {
             brakeForceN += maxBrake * 0.85f
         }
+        val uphill = sample.gradePct * cos(headingOffsetFromRoadRad) * driveDir > 2.5f
+        if (brake > .35f && abs(forwardSpeedMs) < .25f && uphill) hillHold = 1.1f
+        else hillHold = (hillHold - dt).coerceAtLeast(0f)
+        if (hillHold > 0f && uphill && throttle < .12f) brakeForceN = maxOf(brakeForceN, maxBrake * .45f)
+        if (throttle >= .12f) hillHold = 0f
         // Hill Descent Control
         if (assists.hdcEnabled && sample.gradePct * cos(headingOffsetFromRoadRad) < -3.5f && forwardSpeedMs > 7.5f && throttle < 0.05f) {
             brakeForceN += maxBrake * 0.35f
@@ -406,9 +425,9 @@ class VehiclePhysicsEngine {
             SurfaceType.SAND -> 2.35f
             SurfaceType.MUD -> 2.85f
         }
-        val aeroDragN = 0.5f * 1.225f * spec.dragCoefficient * 2.5f * forwardSpeedMs * abs(forwardSpeedMs)
+        val aeroDragN = 0.5f * 1.225f * spec.dragCoefficient * spec.bodyWidthM * spec.bodyHeightM * .85f * forwardSpeedMs * abs(forwardSpeedMs)
         val rollingN = spec.rollingResistance * surfaceRollMult * (if (abs(forwardSpeedMs) > 0.05f) sign(forwardSpeedMs) else 0f)
-        val engineBrakeN = if (throttle < 0.05f && driveDir != 0) forwardSpeedMs * 110f * coupling else 0f
+        val engineBrakeN = if (throttle < 0.05f && driveDir != 0) forwardSpeedMs * transmission.coastDrag * ratio.coerceIn(.65f, 3f) * coupling else 0f
 
         var netForceN = driveForceN + gravityForceN - aeroDragN - rollingN - engineBrakeN
         val speedSign = if (abs(forwardSpeedMs) > 0.04f) sign(forwardSpeedMs) else 0f
