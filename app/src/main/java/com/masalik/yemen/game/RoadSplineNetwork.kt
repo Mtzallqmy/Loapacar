@@ -178,6 +178,13 @@ object RoadSplineNetwork {
             id = "city_hodeidah_route", nameAr = "الحديدة — طريق تهامة", governorateAr = "الحديدة",
             subtitleAr = "نقطة انطلاق مستوحاة من تهامة ضمن العالم الإجرائي الحالي",
             distanceM = 20400f, highlightsAr = listOf("سهول تهامة", "شحنات محلية", "مسار تخيلي")
+        ),
+        ORIGINAL_CITY_HUBS.first { it.regionId == RegionId.WADI_RAYHAN }.copy(
+            id = "city_mahwit_terraces", nameAr = "المحويت — قرى المدرجات", governorateAr = "المحويت",
+            subtitleAr = "حي جبلي وطرق خدمات بين المدرجات مستوحاة من المحويت",
+            distanceM = 7050f, altitudeM = 1780, mapX = 22f, mapY = 37f,
+            defaultWeather = WeatherPreset.MOUNTAIN_FOG,
+            highlightsAr = listOf("قرى حجرية", "ممرات جبلية", "مزارع ومدرجات")
         )
     )
 
@@ -187,6 +194,8 @@ object RoadSplineNetwork {
         TrafficIntersectionDef("sig_taiz_2", "جولة التحرير — تعز", 1320f, 7f),
         TrafficIntersectionDef("sig_ibb_1", "تقاطع العدين — إب", 3320f, 14f),
         TrafficIntersectionDef("sig_ibb_2", "مفرق جبلة — إب", 4480f, 4f),
+        TrafficIntersectionDef("sig_mahwit", "مفرق المدرجات — المحويت", 7050f, 5f),
+        TrafficIntersectionDef("sig_marib", "تقاطع سوق مأرب", 16900f, 9f),
         TrafficIntersectionDef("sig_dhamar", "تقاطع ذمار المركزي", 11460f, 11f),
         TrafficIntersectionDef("sig_sanaa_1", "جولة الزبيري — صنعاء", 14200f, 18f),
         TrafficIntersectionDef("sig_sanaa_bab", "إشارة باب اليمن — صنعاء القديمة", 15380f, 3f),
@@ -216,6 +225,7 @@ object RoadSplineNetwork {
         WorldPoi("poi_wash_ibb", "مغسلة إب الخضراء", "car_wash", 3650f, 9.5f, RegionId.IBB_GREEN_PEAKS),
         WorldPoi("poi_fuel_ibb", "محطة اللواء الأخضر", "fuel", 4820f, -9.5f, RegionId.IBB_GREEN_PEAKS),
         WorldPoi("poi_work_wadi", "ورشة وادي ريحان", "workshop", 6380f, 9.5f, RegionId.WADI_RAYHAN),
+        WorldPoi("poi_work_mahwit", "ورشة المدرجات", "workshop", 7130f, 9.5f, RegionId.WADI_RAYHAN),
         WorldPoi("poi_fuel_naqil", "محطة نقيل سمارة", "fuel", 8400f, 9.5f, RegionId.NAQIL_SAHAB),
         WorldPoi("poi_wash_naqil", "مغسلة السحاب", "car_wash", 9950f, -9.5f, RegionId.NAQIL_SAHAB),
         WorldPoi("poi_fuel_dhamar", "محطة ذمار", "fuel", 11650f, 9.5f, RegionId.SANAA_HIGHLANDS),
@@ -310,8 +320,10 @@ object RoadSplineNetwork {
     private fun isUrbanCorridor(d: Float): Boolean {
         return d in 0f..1850f ||
             d in 3050f..4850f ||
+            d in 6840f..7280f ||
             d in 11100f..12050f ||
             d in 13400f..16100f ||
+            d in 16660f..17220f ||
             d in 18250f..19400f ||
             d in 19850f..20550f ||
             d in 20900f..21920f

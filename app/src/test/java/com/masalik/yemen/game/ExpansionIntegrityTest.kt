@@ -22,7 +22,7 @@ class ExpansionIntegrityTest {
 
     @Test fun missionsHaveUniqueIdsAndValidRoutes() {
         val missions = MissionsCatalog.ALL_OFFLINE_MISSIONS
-        assertEquals(78, missions.size)
+        assertEquals(81, missions.size)
         assertEquals(missions.size, missions.map { it.id }.distinct().size)
         missions.forEach {
             assertTrue(it.startDistanceM >= 0f)
@@ -36,7 +36,7 @@ class ExpansionIntegrityTest {
     @Test fun destinationsRemainInsideTheirRegions() {
         val cities = RoadSplineNetwork.YEMEN_CITY_HUBS
         assertEquals(cities.size, cities.map { it.id }.distinct().size)
-        assertEquals(12, cities.size)
+        assertEquals(13, cities.size)
         cities.forEach { assertEquals(it.regionId, RoadSplineNetwork.getRegionAt(it.distanceM).id) }
     }
 

@@ -19,6 +19,8 @@ object CityStreetNetwork {
                 "city_sanaa_old" -> listOf(-140f,-74f,0f,65f,140f)
                 "city_aden_mokha_coast" -> listOf(-160f,0f,155f)
                 "city_shibam_hadramout" -> listOf(-130f,-52f,32f,122f)
+                "city_mahwit_terraces" -> listOf(-135f,-52f,30f,145f)
+                "city_marib_desert" -> listOf(-150f,-76f,0f,82f,150f)
                 "city_ibb_green" -> listOf(-145f,-58f,0f,138f)
                 else -> listOf(-140f,0f,140f)
             }

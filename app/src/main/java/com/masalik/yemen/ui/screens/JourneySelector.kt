@@ -42,13 +42,16 @@ internal fun JourneySelector(onStart: (MissionDefinition) -> Unit, modifier: Mod
     Column(modifier.clip(RoundedCornerShape(18.dp)).background(Color(0xEF14201F)).padding(13.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Text("رحلات اليمن", color = MasalikIvory, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-        Row(Modifier.fillMaxWidth().selectableGroup(),horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            entries.forEachIndexed { i, entry ->
-                Box(Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
-                    .background(if (selected==i) accent else Color.White.copy(alpha=.08f))
-                    .selectable(selected==i, role=Role.Tab) { selected=i }
-                    .padding(vertical=7.dp), contentAlignment=androidx.compose.ui.Alignment.Center) {
-                    Text(if (i == 0) "تعز" else entry.place, color=if (selected==i) Color(0xFF10201A) else MasalikIvory, fontSize=12.sp)
+        entries.chunked(6).forEachIndexed { row, group ->
+            Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                group.forEachIndexed { index, entry ->
+                    val i = row * 6 + index
+                    Box(Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
+                        .background(if (selected==i) accent else Color.White.copy(alpha=.08f))
+                        .selectable(selected==i, role=Role.Tab) { selected=i }
+                        .padding(vertical=5.dp), contentAlignment=androidx.compose.ui.Alignment.Center) {
+                        Text(if (i == 0) "تعز" else entry.place, color=if (selected==i) Color(0xFF10201A) else MasalikIvory, fontSize=12.sp)
+                    }
                 }
             }
         }

@@ -79,7 +79,25 @@ object YemenJourneys {
             4350f,VehicleId.MADINA,GameModeCategory.CHALLENGE,TimeOfDayPreset.NIGHT,WeatherPreset.HEAVY_RAIN,
             RoadObjective(4410f,2.65f,ObjectiveKind.GATE,"المطر كثيف · اتبع الحارة حتى المفرق"),
             RoadObjective(4498f,2.65f,ObjectiveKind.GATE,"اعبر التقاطع بعد خلوّ المعبر"),
-            RoadObjective(4545f,2.65f,ObjectiveKind.PARK,"موقف جبلة · توقّف وثبّت السيارة"))
+            RoadObjective(4545f,2.65f,ObjectiveKind.PARK,"موقف جبلة · توقّف وثبّت السيارة")),
+        trip("journey_mahwit_terrace","المحويت","طريق المدرجات",
+            "اصعد إلى القرية في ضباب المرتفعات ثم اصطف في الساحة.",
+            6860f,VehicleId.SHAHIQ,GameModeCategory.CHALLENGE,TimeOfDayPreset.MORNING,WeatherPreset.MOUNTAIN_FOG,
+            RoadObjective(6950f,2.65f,ObjectiveKind.GATE,"اتبع الطريق الجبلي إلى القرية"),
+            RoadObjective(7070f,2.65f,ObjectiveKind.GATE,"اعبر مفرق المدرجات"),
+            RoadObjective(7175f,2.65f,ObjectiveKind.PARK,"اصطف في ساحة القرية")),
+        trip("journey_marib_market","مأرب","تمور سوق مأرب",
+            "حمّل الصندوق بالتمور عند السوق ثم سلّمه في مخزن الطريق الصحراوي.",
+            16730f,VehicleId.SAQR,GameModeCategory.CARGO,TimeOfDayPreset.AFTERNOON,WeatherPreset.CLEAR,
+            RoadObjective(16812f,2.65f,ObjectiveKind.LOAD,"حمّل صناديق التمور عند السوق"),
+            RoadObjective(16980f,2.65f,ObjectiveKind.GATE,"اعبر الشارع التجاري"),
+            RoadObjective(17040f,2.65f,ObjectiveKind.UNLOAD,"سلّم التمور في المخزن")),
+        trip("journey_hodeidah_coast","الحديدة","خط الساحل",
+            "استلم الركاب من سهل تهامة وانقلهم إلى محطة الحديدة.",
+            20220f,VehicleId.HAFILAT,GameModeCategory.PASSENGER,TimeOfDayPreset.SUNSET,WeatherPreset.CLEAR,
+            RoadObjective(20270f,2.65f,ObjectiveKind.BOARD,"توقّف لصعود ركاب تهامة"),
+            RoadObjective(20430f,2.65f,ObjectiveKind.GATE,"تابع الطريق إلى السوق التهامي"),
+            RoadObjective(20520f,2.65f,ObjectiveKind.ALIGHT,"أنزل الركاب عند محطة الحديدة"))
     )
     val taizRoutes = listOf(sabirTrip(true), sabirTrip(false))
     val all = taizRoutes + otherCities

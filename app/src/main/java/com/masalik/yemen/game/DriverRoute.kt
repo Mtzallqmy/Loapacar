@@ -10,7 +10,10 @@ object DriveDestinations {
         DriveDestination("استراحة المدرجات",MapPoint(1380f,SabirRoad.offset(1380f)+1.65f)),
         DriveDestination("مطلّ صبر",MapPoint(2350f,2.65f)),DriveDestination("سوق إب",MapPoint(3400f,34f)),
         DriveDestination("باب اليمن",MapPoint(15465f,2.65f)),DriveDestination("ساحة شبام",MapPoint(18695f,2.65f)),
-        DriveDestination("رصيف عدن",MapPoint(21640f,2.65f)))
+        DriveDestination("رصيف عدن",MapPoint(21640f,2.65f)),
+        DriveDestination("قرية المحويت", MapPoint(7175f, 2.65f)),
+        DriveDestination("سوق مأرب", MapPoint(16812f, 2.65f)),
+        DriveDestination("محطة الحديدة", MapPoint(20520f, 2.65f)))
 }
 
 /** Sample the same streets shown by GPS into right-hand lanes. Progress is local to the last fix. */

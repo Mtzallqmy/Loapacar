@@ -17,6 +17,8 @@ object CityArchitectureCatalog {
         RegionId.TIHAMA_PLAINS -> CityArchitectureProfile(1, 2, 11.0f, courtyardWalls = true)
         RegionId.COASTAL_ROAD -> CityArchitectureProfile(2, 3, 10.0f, woodenScreens = true)
         RegionId.TAIZ_HIGHLANDS -> CityArchitectureProfile(3, 3, 9.0f)
+        RegionId.WADI_RAYHAN -> CityArchitectureProfile(2, 2, 7.5f, courtyardWalls = true)
+        RegionId.MASALIK_DESERT -> CityArchitectureProfile(1, 2, 12f, courtyardWalls = true)
         RegionId.IBB_GREEN_PEAKS -> CityArchitectureProfile(2, 3, 8.0f)
         else -> CityArchitectureProfile(1, 2, 9.0f)
     }
