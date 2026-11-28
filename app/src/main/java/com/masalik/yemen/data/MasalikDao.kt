@@ -54,6 +54,9 @@ interface MasalikDao {
     @Query("SELECT * FROM driving_logs ORDER BY id DESC LIMIT 20")
     suspend fun getRecentTripsOnce(): List<DrivingTripLogEntity>
 
+    @Query("SELECT * FROM driving_logs ORDER BY id ASC")
+    suspend fun getAllTrips(): List<DrivingTripLogEntity>
+
     @Query("SELECT COUNT(*) FROM driving_logs")
     suspend fun getTotalTripsCount(): Int
 

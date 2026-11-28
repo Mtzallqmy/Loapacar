@@ -51,6 +51,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.net.Uri
+import com.masalik.yemen.data.SaveBackupCodec
 import java.time.Instant
 
 enum class ActiveModal {
@@ -59,6 +63,7 @@ enum class ActiveModal {
 
 data class MasalikUiState(
     val profileReady: Boolean = false,
+    val backupBusy: Boolean = false,
     val saveState: SaveGameSchema = SaveGameSchema(),
     val activeModal: ActiveModal = ActiveModal.MENU,
     val telemetry: VehicleTelemetry = VehicleTelemetry(),
@@ -139,7 +144,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         previousTelemetry = lastTelemetry
         fixedRemainder = 0.0
     }
-    private val pendingSaves = kotlinx.coroutines.channels.Channel<SaveGameSchema>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+    private val pendingSaves = kotlinx.coroutines.channels.Channel<suspend () -> Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
     private var missionElapsedSec: Float = 0f
     private var uiSyncAccumulator: Float = 0f
     private var autoSaveAccumulator: Float = 0f
@@ -158,7 +163,10 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     private var tripStartTimeMs: Long = System.currentTimeMillis()
 
     init {
-        viewModelScope.launch { for (snapshot in pendingSaves) repository.persistSaveGame(snapshot) }
+        viewModelScope.launch { for (operation in pendingSaves) {
+            try { operation() } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) { _uiState.update { it.copy(toastMessageAr = "تعذر حفظ البيانات محلياً") } }
+        } }
         viewModelScope.launch {
             val loaded = repository.loadSaveGame()
             worldTimeHours = loaded.worldTimeHours
@@ -666,6 +674,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     fun dismissToast() = _uiState.update { it.copy(toastMessageAr = null) }
 
     @Synchronized fun setModal(modal: ActiveModal) {
+        if (_uiState.value.backupBusy) return
         if (modal != ActiveModal.DRIVING) stopAutoDrive()
         if (modal == ActiveModal.DRIVING && _uiState.value.activeModal != ActiveModal.DRIVING) {
             tripStartDistM = physics.totalDistanceDrivenM
@@ -1245,17 +1254,56 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update { it.copy(toastMessageAr = if (success) "تم حفظ النسخة الاحتياطية محلياً" else "تعذر حفظ النسخة الاحتياطية") }
     }
 
-    fun exportSaveJson(): String = repository.exportSaveJson(_uiState.value.saveState)
-
-    fun importSaveJson(raw: String) {
-        val result = repository.importSaveJson(raw)
-        result.onSuccess { imported ->
-            worldTimeHours = imported.worldTimeHours
-            applySaveToEngines(imported)
-            commitSave(imported)
-            _uiState.update { it.copy(toastMessageAr = "تم استيراد ملف الحفظ بنجاح!") }
-        }.onFailure {
-            _uiState.update { it.copy(toastMessageAr = "تعذر قراءة ملف الحفظ، تأكد من صلاحية الملف.") }
+    @Synchronized fun backupDocument(uri: Uri, importing: Boolean) {
+        if (!_uiState.value.profileReady || _uiState.value.backupBusy) return
+        saveSnapshotNow()
+        val snapshot = _uiState.value.saveState
+        _uiState.update { it.copy(backupBusy = true) }
+        pendingSaves.trySend {
+            try {
+                if (importing) {
+                    val raw = withContext(Dispatchers.IO) {
+                        val stream = checkNotNull(getApplication<Application>().contentResolver.openInputStream(uri))
+                        stream.bufferedReader(Charsets.UTF_8).use { reader ->
+                            val data = StringBuilder()
+                            val buffer = CharArray(8192)
+                            while (true) {
+                                val count = reader.read(buffer)
+                                if (count < 0) break
+                                require(data.length + count <= SaveBackupCodec.MAX_CHARS)
+                                data.append(buffer, 0, count)
+                            }
+                            data.toString()
+                        }
+                    }
+                    val imported = repository.importSaveJson(raw)
+                    synchronized(this) {
+                        worldTimeHours = imported.profile.worldTimeHours
+                        applySaveToEngines(imported.profile)
+                        tripStartDistM = physics.totalDistanceDrivenM
+                        _uiState.update { it.copy(saveState = imported.profile,
+                            previewVehicleId = imported.profile.selectedVehicleId,
+                            radioOpen = imported.profile.radioSettings.isOpen,
+                            toastMessageAr = when {
+                                imported.journeyUnavailable -> "تم استيراد الحفظ، لكن الرحلة القديمة لم تعد متاحة"
+                                imported.trips == null -> "تم استيراد الحفظ القديم؛ لم يتضمن سجل الرحلات"
+                                else -> "تم استيراد ملف الحفظ بنجاح!"
+                            }) }
+                    }
+                    refreshDbStats()
+                } else {
+                    val encoded = repository.exportSaveJson(snapshot)
+                    withContext(Dispatchers.IO) {
+                        checkNotNull(getApplication<Application>().contentResolver.openOutputStream(uri, "wt")).use {
+                            it.write(encoded.toByteArray(Charsets.UTF_8))
+                        }
+                    }
+                    notifyBackupResult(true)
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                _uiState.update { it.copy(toastMessageAr = if (importing) "تعذر قراءة ملف الحفظ، تأكد من صلاحية الملف." else "تعذر حفظ النسخة الاحتياطية") }
+            } finally { _uiState.update { it.copy(backupBusy = false) } }
         }
     }
 
@@ -1292,8 +1340,9 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         commitSave(updated)
     }
 
-    private fun commitSave(next: SaveGameSchema) {
+    @Synchronized private fun commitSave(next: SaveGameSchema) {
+        if (_uiState.value.backupBusy) return
         _uiState.update { it.copy(saveState = next) }
-        pendingSaves.trySend(next)
+        pendingSaves.trySend { repository.persistSaveGame(next) }
     }
 }

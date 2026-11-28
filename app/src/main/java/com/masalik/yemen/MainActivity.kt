@@ -196,29 +196,22 @@ private fun MasalikRootScreen(
     val context = LocalContext.current
     var worldReady by remember { mutableStateOf(false) }
 
-    // SAF JSON Export / Import launchers for 100% offline local save backup
+    // Both document operations are performed by the serialized save worker.
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        if (uri != null) {
-            runCatching {
-                val jsonPayload = vm.exportSaveJson()
-                val stream = checkNotNull(context.contentResolver.openOutputStream(uri))
-                stream.use { it.write(jsonPayload.toByteArray(Charsets.UTF_8)) }
-            }.onSuccess { vm.notifyBackupResult(true) }.onFailure { vm.notifyBackupResult(false) }
-        }
-    }
-
+    ) { uri -> uri?.let { vm.backupDocument(it, importing = false) } }
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
-                    vm.importSaveJson(reader.readText())
-                }
-            }
-        }
+    ) { uri -> uri?.let { vm.backupDocument(it, importing = true) } }
+
+    if (state.backupBusy) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {},
+            title = { Text("النسخة الاحتياطية") },
+            text = { Text("جارٍ معالجة بيانات اللعبة...") },
+            confirmButton = {},
+            properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+        )
     }
 
     // Auto-dismiss transient toast messages after 3.2s
@@ -383,7 +376,7 @@ private fun MasalikRootScreen(
                     onToggleAutoCycle = { vm.toggleAutoTimeCycle() },
                     onUpdateAudio = { vm.updateAudioMixer(it) },
                     onExportJson = { exportLauncher.launch("masalik_yemen_backup.masalik.json") },
-                    onImportJson = { importLauncher.launch(arrayOf("application/json", "*/*")) },
+                    onImportJson = { importLauncher.launch(arrayOf("*/*")) },
                     onResetProgress = { vm.resetAllProgress() },
                     onRunDiagnostics = { vm.runDiagnostics() },
                     onClose = { vm.setModal(ActiveModal.MENU) }

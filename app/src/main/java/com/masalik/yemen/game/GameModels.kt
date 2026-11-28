@@ -611,6 +611,7 @@ data class DriverRankInfo(
     val nextLevelXp: Int
 )
 
+@Serializable
 data class DrivingTripLog(
     val id: Long = 0,
     val timestampIso: String,

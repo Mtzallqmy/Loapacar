@@ -257,28 +257,25 @@ class MasalikRepository(
         )
     }
 
-    fun exportSaveJson(save: SaveGameSchema): String = json.encodeToString(save)
+    private fun DrivingTripLogEntity.asLog() = DrivingTripLog(
+        id = id, timestampIso = timestampIso, vehicleId = VehicleId.valueOf(vehicleId),
+        regionId = RegionId.valueOf(regionId), regionNameAr = regionNameAr,
+        distanceKm = distanceKm, maxSpeedKmh = maxSpeedKmh, durationSec = durationSec
+    )
 
-    fun importSaveJson(raw: String): Result<SaveGameSchema> = runCatching {
-        require(raw.length <= 2_000_000) { "Backup too large" }
-        val document = json.parseToJsonElement(raw) as? kotlinx.serialization.json.JsonObject
-        require(document != null && ("schemaVersion" in document || "selectedVehicleId" in document)) { "Unknown backup format" }
-        val decoded = json.decodeFromJsonElement(SaveGameSchema.serializer(), document)
-        require(decoded.schemaVersion in 1..3 && decoded.selectedVehicleId in decoded.unlockedVehicles)
-        require(decoded.masalikCoins >= 0 && decoded.driverXp >= 0 && decoded.missionCompletions.values.all { it >= 0 })
-        decoded.missionRun?.let {
-            require(it.elapsed.isFinite() && it.elapsed >= 0f && it.lateralM.isFinite() &&
-                it.headingOffsetRad.isFinite() && it.cargoCondition in 0f..100f)
+    suspend fun exportSaveJson(save: SaveGameSchema): String = withContext(Dispatchers.IO) {
+        SaveBackupCodec.encode(save, dao.getAllTrips().map { it.asLog() })
+    }
+
+    internal suspend fun importSaveJson(raw: String): SaveBackup = withContext(Dispatchers.IO) {
+        val backup = SaveBackupCodec.decode(raw)
+        database.withTransaction {
+            persistSaveGame(backup.profile)
+            val seen = dao.getAllTrips().map { it.asLog().copy(id = 0) }.toHashSet()
+            for (trip in backup.trips.orEmpty()) {
+                if (seen.add(trip.copy(id = 0))) logDrivingTrip(trip)
+            }
         }
-        require(decoded.playerDistanceM.isFinite() && decoded.worldTimeHours.isFinite()) { "Invalid numeric state" }
-        require(decoded.missionBestTimesSec.values.all { it.isFinite() && it >= 0f }) { "Invalid mission record" }
-        decoded.copy(
-            playerDistanceM = decoded.playerDistanceM.coerceIn(0f, com.masalik.yemen.game.RoadSplineNetwork.TOTAL_ROAD_LENGTH_M),
-            worldTimeHours = decoded.worldTimeHours.coerceIn(0f, 24f),
-            hudSettings = decoded.hudSettings.copy(
-                targetFps = decoded.hudSettings.targetFps.coerceIn(30, 60),
-                tiltSensitivity = if (decoded.hudSettings.tiltSensitivity.isFinite()) decoded.hudSettings.tiltSensitivity.coerceIn(0.5f, 2f) else 1f
-            )
-        )
+        backup
     }
 }
