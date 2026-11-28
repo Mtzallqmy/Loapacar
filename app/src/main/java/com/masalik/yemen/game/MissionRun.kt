@@ -8,14 +8,16 @@ import kotlin.math.cos
 data class MissionProgress(val id: String, val stage: Int = 0, val elapsed: Float = 0f,
                            val lateralM: Float = 2.85f, val cargoCondition: Float = 100f,
                            val rivalDistance: Float? = null, val headingOffsetRad: Float = 0f,
-                           val checkpointCondition: Float? = null, val checkpointElapsed: Float? = null)
+                           val checkpointCondition: Float? = null, val checkpointElapsed: Float? = null,
+                           val quotedRewardCoins: Int? = null)
 
 enum class ObjectiveKind { GATE, LOAD, UNLOAD, BOARD, ALIGHT, ATTACH, PARK }
 data class RoadObjective(val distance: Float, val lane: Float, val kind: ObjectiveKind,
                          val label: String, val reverseRoute: Boolean = false) {
     val isStop get() = kind != ObjectiveKind.GATE
 }
-class MissionRun(val mission: MissionDefinition, saved: MissionProgress? = null) {
+class MissionRun(val mission: MissionDefinition, saved: MissionProgress? = null, quoteCoins: Int = mission.rewardCoins) {
+    val quotedRewardCoins = (saved?.quotedRewardCoins ?: quoteCoins).coerceIn(0, 50_000_000)
     val objectives = objectivesFor(mission)
     var stage = (saved?.stage ?: 0).coerceIn(0, objectives.lastIndex)
         private set
@@ -40,7 +42,7 @@ class MissionRun(val mission: MissionDefinition, saved: MissionProgress? = null)
         val l=last?.lane ?: if (mission.id==MissionsCatalog.PARKING_LESSON_ID) 34f else 2.55f
         val yaw=if(last?.reverseRoute==true) Math.PI.toFloat() else 0f
         return d to MissionProgress(mission.id,stage,checkpointElapsed,l,checkpointCondition,headingOffsetRad=yaw,
-            checkpointCondition=checkpointCondition,checkpointElapsed=checkpointElapsed)
+            checkpointCondition=checkpointCondition,checkpointElapsed=checkpointElapsed,quotedRewardCoins=quotedRewardCoins)
     }
     private var lastSpeed: Float? = null
     val payloadKg: Float get() {
@@ -62,7 +64,7 @@ class MissionRun(val mission: MissionDefinition, saved: MissionProgress? = null)
     val finished get() = stage == objectives.size
     val target get() = objectives.getOrNull(stage)
     fun snapshot(lateral: Float, rival: Float?, headingOffsetRad: Float = 0f) =
-        MissionProgress(mission.id, stage, elapsed, lateral, condition, rival, headingOffsetRad,checkpointCondition,checkpointElapsed)
+        MissionProgress(mission.id, stage, elapsed, lateral, condition, rival, headingOffsetRad,checkpointCondition,checkpointElapsed,quotedRewardCoins)
 
     fun advance(dt: Float, t: VehicleTelemetry, headingOffset: Float, impact: Float) {
         val goal = target ?: return

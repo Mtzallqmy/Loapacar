@@ -206,7 +206,7 @@ fun MainMenuLobbyScreen(
         if (split && saveState.missionRun == null) {
             JourneySelector(onJourney, Modifier.align(Alignment.CenterEnd)
                 .width((maxWidth * .38f).coerceAtMost(290.dp)).padding(top=45.dp,bottom=22.dp)
-                .verticalScroll(rememberScrollState()))
+                .verticalScroll(rememberScrollState()), saveState)
         }
 
         // Right-aligned (RTL Start) Editorial Menu Panel leaving the 3D Showroom open on the left
@@ -290,7 +290,7 @@ fun MainMenuLobbyScreen(
 
             if (saveState.missionRun == null) {
                 if (!split) {
-                    JourneySelector(onJourney, Modifier.fillMaxWidth())
+                    JourneySelector(onJourney, Modifier.fillMaxWidth(), saveState)
                     Spacer(Modifier.height(8.dp))
                 }
                 Button(onClick = onParkingLesson, modifier = Modifier.fillMaxWidth().testTag("parking_lesson_button")) {

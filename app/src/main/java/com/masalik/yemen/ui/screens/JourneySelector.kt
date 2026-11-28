@@ -24,7 +24,7 @@ import com.masalik.yemen.game.*
 import com.masalik.yemen.ui.theme.*
 
 @Composable
-internal fun JourneySelector(onStart: (MissionDefinition) -> Unit, modifier: Modifier = Modifier) {
+internal fun JourneySelector(onStart: (MissionDefinition) -> Unit, modifier: Modifier = Modifier, save: SaveGameSchema = SaveGameSchema()) {
     var selected by rememberSaveable { mutableIntStateOf(0) }
     val entries = YemenJourneys.all.filterNot { it == YemenJourneys.taizRoutes.last() }
     var mainRoad by rememberSaveable { mutableStateOf(false) }
@@ -89,7 +89,7 @@ internal fun JourneySelector(onStart: (MissionDefinition) -> Unit, modifier: Mod
         }
         val distance = if (selected == 0) (m.finishDistanceM - m.startDistanceM) +
             (m.finishDistanceM - journey.stops.last().distance) else m.finishDistanceM - m.startDistanceM
-        Text("ارتفاع الطريق · ${distance.toInt()} م · ${m.timeOfDayPreset.labelAr}",
+        Text("ارتفاع الطريق · ${distance.toInt()} م · ${m.timeOfDayPreset.labelAr} · ${RegionalEconomy.quote(m, save)} ر.ي",
             color=MasalikMuted,fontSize=10.sp)
         Button(onClick={ onStart(m) }, modifier=Modifier.fillMaxWidth(),
             colors=ButtonDefaults.buttonColors(containerColor=accent,contentColor=Color(0xFF10201A))) {

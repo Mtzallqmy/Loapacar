@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.masalik.yemen.audio.MasalikAudioEngine
+import com.masalik.yemen.audio.TrafficAudioField
 import com.masalik.yemen.data.MasalikDatabase
 import com.masalik.yemen.data.MasalikRepository
 import com.masalik.yemen.game.DriveDestination
@@ -33,6 +34,7 @@ import com.masalik.yemen.game.RadarAlertInfo
 import com.masalik.yemen.game.ReplayCameraAngle
 import com.masalik.yemen.game.ReplayFrame
 import com.masalik.yemen.game.ReplayRecorder
+import com.masalik.yemen.game.RegionalEconomy
 import com.masalik.yemen.game.RoadSplineNetwork
 import com.masalik.yemen.game.SaveGameSchema
 import com.masalik.yemen.game.TimeOfDayPreset
@@ -327,6 +329,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
             audioEngine.exhaustPopIntensity = rTelemetry.exhaustPopIntensity
             audioEngine.inTunnel = rTelemetry.inTunnel
             audioEngine.emergencySirenProximity = 0f
+            audioEngine.trafficField = TrafficAudioField()
 
             uiSyncAccumulator += dt
             if (uiSyncAccumulator >= 0.05f) {
@@ -535,6 +538,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         audioEngine.exhaustPopIntensity = telemetry.exhaustPopIntensity
         audioEngine.inTunnel = telemetry.inTunnel
         audioEngine.emergencySirenProximity = if (isDriving) livingWorld.emergencySirenProximity else 0f
+        audioEngine.trafficField = if (isDriving) TrafficAudioField.sample(telemetry, livingWorld.trafficVehicles) else TrafficAudioField()
 
         // Sync UI StateFlow at ~20Hz so Compose HUD stays buttery smooth with low recomposition cost
         uiSyncAccumulator += dt
@@ -618,11 +622,12 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun completeActiveMission(mission: MissionDefinition, elapsedSec: Float) {
+        val reward = RegionalEconomy.earned(mission, run?.quotedRewardCoins ?: mission.rewardCoins, run?.condition ?: 100f)
         run = null
         missionElapsedSec = 0f
         physics.configureAiRival(false)
         val current = _uiState.value.saveState
-        val nextCoins = current.masalikCoins + mission.rewardCoins
+        val nextCoins = (current.masalikCoins.toLong() + reward).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
         val nextXp = current.driverXp + mission.rewardXp
         val prevBest = current.missionBestTimesSec[mission.id]
         val newBest = if (prevBest == null || elapsedSec < prevBest) elapsedSec else prevBest
@@ -642,7 +647,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update {
             it.copy(
                 activeMission = null,
-                missionBannerAr = "أحسنت! أنجزت «${mission.titleAr}» وحصلت على +${mission.rewardCoins} ر.ي و +${mission.rewardXp} XP"
+                missionBannerAr = "أحسنت! أنجزت «${mission.titleAr}» وحصلت على +${reward} ر.ي و +${mission.rewardXp} XP"
             )
         }
     }
@@ -737,7 +742,7 @@ class MasalikGameViewModel(application: Application) : AndroidViewModel(applicat
         physics.selectVehicle(chosenVehicle, custom, current.fuelByVehicle[chosenVehicle], current.damageByVehicle[chosenVehicle])
         inputHandbrake = false
         inputClutch = 0f
-        run = MissionRun(mission)
+        run = MissionRun(mission, quoteCoins = RegionalEconomy.quote(mission, current))
         physics.weather = mission.weatherPreset
         physics.resetToRoad(mission.startDistanceM, if (mission.id == MissionsCatalog.PARKING_LESSON_ID) 34f else 2.55f)
         snapToCurrentPose()

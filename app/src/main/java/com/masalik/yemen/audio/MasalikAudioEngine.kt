@@ -65,6 +65,7 @@ class MasalikAudioEngine(private val assets: android.content.res.AssetManager) {
     private var audioThread: Thread? = null
     private var audioTrack: AudioTrack? = null
 
+    @Volatile internal var trafficField = TrafficAudioField()
     @Volatile var insideCabin = false
     @Volatile var mixer: AudioMixerSettings = AudioMixerSettings()
     @Volatile var radioSettings: RadioPlayerSettings = RadioPlayerSettings()
@@ -135,7 +136,7 @@ class MasalikAudioEngine(private val assets: android.content.res.AssetManager) {
         if (running.getAndSet(true)) return
         val minBuf = AudioTrack.getMinBufferSize(
             sampleRate,
-            AudioFormat.CHANNEL_OUT_MONO,
+            AudioFormat.CHANNEL_OUT_STEREO,
             AudioFormat.ENCODING_PCM_16BIT
         ).coerceAtLeast(2048)
 
@@ -151,11 +152,12 @@ class MasalikAudioEngine(private val assets: android.content.res.AssetManager) {
                     AudioFormat.Builder()
                         .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                         .setSampleRate(sampleRate)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                         .build()
                 )
                 .setBufferSizeInBytes(minBuf * 2)
                 .setTransferMode(AudioTrack.MODE_STREAM)
+                .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
                 .build()
             track.play()
             audioTrack = track
@@ -193,7 +195,11 @@ class MasalikAudioEngine(private val assets: android.content.res.AssetManager) {
         var starterIndex = ignition.size
         var wasRunning = engineRunning
         val chunkSamples = 1024
-        val buffer = ShortArray(chunkSamples)
+        val buffer = ShortArray(chunkSamples * 2)
+        var trafficPhase = 0.0
+        var trafficGain = 0f
+        var trafficPan = 0f
+        var trafficPitch = 55f
         val rng = Random(2026)
 
         var engPhase = 0.0
@@ -287,6 +293,7 @@ class MasalikAudioEngine(private val assets: android.content.res.AssetManager) {
             }
             val isRaining = weather == WeatherPreset.LIGHT_RAIN || weather == WeatherPreset.HEAVY_RAIN
 
+            val nearby = trafficField
             for (i in 0 until chunkSamples) {
                 var mechSample = 0f
                 var sample = 0f
@@ -450,12 +457,21 @@ class MasalikAudioEngine(private val assets: android.content.res.AssetManager) {
                     percAgeSec += invSr.toFloat()
                 }
 
-                val out = (sample * master).coerceIn(-0.96f, 0.96f)
-                buffer[i] = (out * 32767f).toInt().toShort()
+                trafficGain += ((if (drivingActive) nearby.gain else 0f) - trafficGain) * .003f
+                trafficPan += (nearby.pan - trafficPan) * .003f
+                trafficPitch += (nearby.pitchHz - trafficPitch) * .003f
+                trafficPhase = (trafficPhase + twoPi * trafficPitch * invSr) % twoPi
+                val traffic = (sin(trafficPhase) * .66 + sin(trafficPhase * 2) * .25 +
+                    sin(trafficPhase * 4) * .09).toFloat() * trafficGain * sfxVol *
+                    if (insideCabin) .065f else .17f
+                val left = (sample + traffic * (1f - trafficPan) * .5f) * master
+                val right = (sample + traffic * (1f + trafficPan) * .5f) * master
+                buffer[2*i] = (left.coerceIn(-.96f,.96f)*32767f).toInt().toShort()
+                buffer[2*i+1] = (right.coerceIn(-.96f,.96f)*32767f).toInt().toShort()
             }
 
             try {
-                audioTrack?.write(buffer, 0, chunkSamples)
+                audioTrack?.write(buffer, 0, buffer.size)
             } catch (_: Throwable) {
                 break
             }
