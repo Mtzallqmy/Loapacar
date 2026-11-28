@@ -256,21 +256,7 @@ private fun MasalikRootScreen(
                 }
             },
             update = { view ->
-                view.targetFps = state.saveState.hudSettings.targetFps
-                val scale = when (state.saveState.graphicsQuality) {
-                    com.masalik.yemen.game.GraphicsQuality.LOW -> 0.65f
-                    com.masalik.yemen.game.GraphicsQuality.MEDIUM -> 0.85f
-                    else -> 1f
-                }
-                view.post {
-                    if (view.width > 0 && view.height > 0) {
-                        val w = (view.width * scale).toInt().coerceAtLeast(1)
-                        val h = (view.height * scale).toInt().coerceAtLeast(1)
-                        if (view.holder.surfaceFrame.width() != w || view.holder.surfaceFrame.height() != h) {
-                            view.holder.setFixedSize(w, h)
-                        }
-                    }
-                }
+                view.updateProfile(state.saveState.graphicsQuality, state.fps, state.saveState.hudSettings.targetFps)
             }
         )
 

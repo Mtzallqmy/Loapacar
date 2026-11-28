@@ -87,7 +87,8 @@ enum class GraphicsQuality(val labelAr: String) {
     LOW("منخفض"),
     MEDIUM("متوسط"),
     HIGH("عالٍ"),
-    ULTRA("فائق 3D")
+    ULTRA("فائق 3D"),
+    CINEMATIC("سينمائي")
 }
 
 @Serializable

@@ -876,8 +876,17 @@ class MasalikGLRenderer(
         snap: RenderFrameSnapshot,
         atmo: AtmosphereSnapshot
     ) {
-        val behind = if (snap.graphicsQuality == com.masalik.yemen.game.GraphicsQuality.LOW) 55f else 110f
-        val ahead = if (snap.graphicsQuality == com.masalik.yemen.game.GraphicsQuality.LOW) 145f else 250f
+        val behind = when (snap.graphicsQuality) {
+            com.masalik.yemen.game.GraphicsQuality.LOW -> 55f
+            com.masalik.yemen.game.GraphicsQuality.CINEMATIC -> 160f
+            else -> 110f
+        }
+        val ahead = when (snap.graphicsQuality) {
+            com.masalik.yemen.game.GraphicsQuality.LOW -> 145f
+            com.masalik.yemen.game.GraphicsQuality.CINEMATIC -> 340f
+            com.masalik.yemen.game.GraphicsQuality.ULTRA -> 300f
+            else -> 250f
+        }
         val minD = ((centerDistM - behind) / 22f).toInt().coerceAtLeast(1) * 22
         val maxD = ((centerDistM + ahead) / 22f).toInt() * 22
         val nightGlow = atmo.nightFactor

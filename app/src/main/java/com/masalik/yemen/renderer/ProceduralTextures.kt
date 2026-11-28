@@ -55,10 +55,13 @@ class ProceduralTextures(private val assets: android.content.res.AssetManager) {
         whiteTex = uploadBitmap(createWhiteBitmap(), repeat = true)
         val streets = mapOf(
             com.masalik.yemen.game.RegionId.TAIZ_HIGHLANDS to ("taiz" to "سوق البن  •  جبل صبر"),
-            com.masalik.yemen.game.RegionId.IBB_GREEN_PEAKS to ("taiz" to "إب  •  طريق جبلة"),
+            com.masalik.yemen.game.RegionId.IBB_GREEN_PEAKS to ("ibb" to "إب  •  طريق جبلة"),
             com.masalik.yemen.game.RegionId.SANAA_HIGHLANDS to ("sanaa" to "باب اليمن  •  سوق الملح"),
             com.masalik.yemen.game.RegionId.COASTAL_ROAD to ("aden" to "عدن  •  طريق الميناء"),
-            com.masalik.yemen.game.RegionId.SHIBAM_HADRAMOUT to ("shibam" to "شبام  •  طريق الوادي")
+            com.masalik.yemen.game.RegionId.SHIBAM_HADRAMOUT to ("shibam" to "شبام  •  طريق الوادي"),
+            com.masalik.yemen.game.RegionId.WADI_RAYHAN to ("mahwit" to "قرى المدرجات"),
+            com.masalik.yemen.game.RegionId.MASALIK_DESERT to ("marib" to "سوق مأرب  •  طريق الواحة"),
+            com.masalik.yemen.game.RegionId.TIHAMA_PLAINS to ("tihama" to "الحديدة  •  أسواق تهامة")
         )
         val elevations = streets.values.map { it.first }.distinct().associateWith { uploadBitmap(photo("quarter_"+it), false) }
         quarterFacades = streets.mapValues { elevations.getValue(it.value.first) }
