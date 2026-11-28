@@ -115,6 +115,8 @@ class VehiclePhysicsEngine {
     var trafficViolationWarningAr: String? = null
     private var violationClearTimerSec: Float = 0f
 
+    private val thermals = VehicleThermals()
+    val brakeEffectiveness get() = thermals.brakeFraction
     private var transmission = Powertrain.forVehicle(vehicleId)
     private var cachedRatio = -1f
     private var cachedPower = -1f
@@ -139,6 +141,7 @@ class VehiclePhysicsEngine {
         savedFuel: Float? = null,
         savedDamage: DamageState? = null
     ) {
+        if (vehicleId != id) thermals.reset()
         vehicleId = id
         spec = VehicleFleetCatalog.specOf(id)
         transmission = Powertrain.forVehicle(id)
@@ -382,7 +385,7 @@ class VehiclePhysicsEngine {
         var driveForceN = 0f
         val canDeliverPower = engineRunning && fuelLiters > 0.01f && driveDir != 0
         if (canDeliverPower) {
-            val engineHealthFactor = 0.55f + 0.45f * (damage.engineHealthPct / 100f)
+            val engineHealthFactor = (0.55f + 0.45f * (damage.engineHealthPct / 100f)) * thermals.enginePowerFraction
             val curve = transmission.torqueFraction(currentRpm, spec.redlineRpm)
             val torqueN = spec.maxEngineTorqueNm * curve * power * ratio * transmission.finalDrive * .86f /
                 spec.wheelRadiusM * throttle * engineHealthFactor * coupling
@@ -394,7 +397,7 @@ class VehiclePhysicsEngine {
         }
 
         // Braking & Park & HDC
-        val maxBrake = spec.maxBrakeForceN * brakeMult
+        val maxBrake = spec.maxBrakeForceN * brakeMult * thermals.brakeFraction
         var brakeForceN = brake * maxBrake * totalGrip.coerceAtMost(1.15f)
         if (input.handbrake || (!manual && autoShifter == AutomaticShifterState.P)) {
             brakeForceN += maxBrake * 0.85f
@@ -414,6 +417,13 @@ class VehiclePhysicsEngine {
             drivetrainMode != DrivetrainMode.TWO_WD,assists)
         driveForceN = forces[0]
         brakeForceN = forces[1]
+        val ambient = when (weather) {
+            WeatherPreset.HEAVY_RAIN, WeatherPreset.LIGHT_RAIN, WeatherPreset.MOUNTAIN_FOG -> 18f
+            WeatherPreset.SANDSTORM -> 36f
+            else -> 28f
+        } - (sample.y - 60f).coerceIn(-30f, 220f) * .025f
+        thermals.step(dt, ambient, forwardSpeedMs, throttle, driveForceN * forwardSpeedMs,
+            brakeForceN, effectiveMassKg, engineRunning, roadWetness)
         // Gravity slope + Aero drag + Surface rolling resistance
         val slopeSin = (sample.gradePct / 100f).coerceIn(-0.28f, 0.28f)
         val gravityForceN = -effectiveMassKg * 9.81f * slopeSin * cos(headingOffsetFromRoadRad)
@@ -673,6 +683,8 @@ class VehiclePhysicsEngine {
             drivetrainMode = drivetrainMode,
             diffLockActive = diffLockActive,
             engineRunning = engineRunning,
+            coolantTempC = thermals.coolantC, brakeTempC = thermals.brakeC,
+            brakeEffectiveness = thermals.brakeFraction,
             headlightsOn = headlightsOn,
             headlightBeamMode = headlightBeamMode,
             wipersOn = wiperMode.active(weather) || wiperPhaseRad > 0f,

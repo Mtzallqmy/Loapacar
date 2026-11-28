@@ -74,7 +74,7 @@ internal class AutoDriver {
         )
         if (guide?.tight == true || abs(car.headingOffsetFromRoadRad) in .45f..2.6f) target=minOf(target,2.6f)
         if (sample.gradePct*direction < -3.5f) target *= .78f
-        val brakeRate = 1.6f + grip
+        val brakeRate = (1.6f + grip) * car.brakeEffectiveness
         val halfLength = car.spec.bodyLengthM * .5f
         var status = AutoDriveStatus.CRUISING
         fun limit(gap: Float, leadSpeed: Float, reason: AutoDriveStatus) {

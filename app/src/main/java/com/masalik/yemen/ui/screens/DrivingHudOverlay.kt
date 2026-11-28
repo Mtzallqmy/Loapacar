@@ -620,6 +620,10 @@ fun DrivingHudOverlay(
                 Text("${kotlin.math.abs(t.speedKmh).toInt()} كم/س", color = MasalikIvory,
                     fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Text("${t.rpm.toInt()} RPM · ${t.fuelLiters.toInt()} L", color = MasalikMuted, fontSize = 10.sp)
+                if (t.coolantTempC > 106f || t.brakeEffectiveness < .95f) {
+                    Text(if (t.coolantTempC > 106f) "حرارة المحرك ${t.coolantTempC.toInt()}°"
+                        else "حرارة الفرامل ${t.brakeTempC.toInt()}°", color = MasalikAmber, fontSize = 10.sp)
+                }
                 if (state.cameraMode != CameraMode.COCKPIT) Text("اضغط للعدادات", color = MasalikAmber, fontSize = 9.sp)
             }
         }
