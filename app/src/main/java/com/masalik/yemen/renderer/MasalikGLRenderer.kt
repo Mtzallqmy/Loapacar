@@ -79,6 +79,7 @@ class MasalikGLRenderer(
     )
 
     private lateinit var urbanBatch: UrbanInstanceBatch
+    private val streetLighting = StreetLighting()
     private var collectUrban = false
     private lateinit var cabinDisplays: CabinDisplays
     private lateinit var mirrorGlass: GpuMesh
@@ -319,6 +320,9 @@ class MasalikGLRenderer(
         GLES30.glUniform3f(shaders.uHeadlightPos, t.posX + fwdX * 2.1f, t.posY + 0.92f, t.posZ + fwdZ * 2.1f)
         GLES30.glUniform3f(shaders.uHeadlightDir, fwdX, -0.075f, fwdZ)
         GLES30.glUniform1f(shaders.uHeadlightStrength, activeHeadlightStrength.coerceAtMost(2.2f))
+        streetLighting.sample(centerDist, currentCamX, currentCamZ, atmo.nightFactor)
+        GLES30.glUniform1i(shaders.uStreetLampCount, streetLighting.count)
+        if (streetLighting.count > 0) GLES30.glUniform4fv(shaders.uStreetLamps, streetLighting.count, streetLighting.positions, 0)
 
         val roadWetness = .04f + .82f * t.roadWetness
         GLES30.glActiveTexture(GLES30.GL_TEXTURE0)

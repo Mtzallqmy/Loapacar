@@ -36,6 +36,8 @@ class ShaderLibrary {
     val uHeadlightPos: Int
     val uHeadlightDir: Int
     val uHeadlightStrength: Int
+    val uStreetLamps: Int
+    val uStreetLampCount: Int
 
     // Sky shader uniform locations
     val uSkyTopColor: Int
@@ -82,6 +84,8 @@ class ShaderLibrary {
         uHeadlightPos = GLES30.glGetUniformLocation(worldProgram, "uHeadlightPos")
         uHeadlightDir = GLES30.glGetUniformLocation(worldProgram, "uHeadlightDir")
         uHeadlightStrength = GLES30.glGetUniformLocation(worldProgram, "uHeadlightStrength")
+        uStreetLamps = GLES30.glGetUniformLocation(worldProgram, "uStreetLamps[0]")
+        uStreetLampCount = GLES30.glGetUniformLocation(worldProgram, "uStreetLampCount")
 
         uSkyTopColor = GLES30.glGetUniformLocation(skyProgram, "uTopColor")
         uSkyHorizonColor = GLES30.glGetUniformLocation(skyProgram, "uHorizonColor")
@@ -182,6 +186,8 @@ class ShaderLibrary {
             uniform vec3 uHeadlightPos;
             uniform vec3 uHeadlightDir;
             uniform float uHeadlightStrength;
+            uniform vec4 uStreetLamps[4];
+            uniform int uStreetLampCount;
 
             out vec4 fragColor;
 
@@ -262,11 +268,26 @@ class ShaderLibrary {
                     }
                 }
 
-                // Subtle warm urban streetlamp ambient pool at night
+                // Local light pools from the visible, physically placed street fixtures.
                 vec3 nightWarmLift = vec3(0.0);
-                if (uNightFactor > 0.25) {
-                    float pool = 0.5 + 0.5 * sin(vWorldPos.x * 0.14) * cos(vWorldPos.z * 0.14);
-                    nightWarmLift = albedo * vec3(1.0, 0.74, 0.36) * (pool * 0.15 * uNightFactor);
+                if (uNightFactor > .1) {
+                    for (int i = 0; i < 4; ++i) {
+                        if (i >= uStreetLampCount) break;
+                        vec4 lamp = uStreetLamps[i];
+                        vec3 toLamp = lamp.xyz - vWorldPos;
+                        float dist = length(toLamp);
+                        if (dist > .4 && dist < 28.0 && toLamp.y > -.3) {
+                            vec3 dir = toLamp / dist;
+                            vec3 lampColor = mix(vec3(1.0,.67,.32), vec3(.77,.90,1.0),lamp.w);
+                            float cone = smoothstep(.22,.57,dir.y);
+                            float attenuation = (1.0-smoothstep(17.0,28.0,dist))/(1.0+.045*dist*dist);
+                            float facing = max(.10,dot(N,dir));
+                            vec3 halfDir = normalize(dir + V);
+                            float highlight = pow(max(dot(N,halfDir),0.0), mix(85.0,12.0,effRough));
+                            nightWarmLift += lampColor * cone * attenuation * uNightFactor *
+                                (albedo*facing*2.8 + highlight*(.16+surfaceWetness)*1.1);
+                        }
+                    }
                 }
 
                 vec3 lit = ambient + diffuse * (1.0 - uMetallic * 0.28) + specular + envRefl * reflAmount + headlightContrib + nightWarmLift + uEmissive;

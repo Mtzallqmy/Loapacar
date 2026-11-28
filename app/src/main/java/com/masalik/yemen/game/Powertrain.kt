@@ -50,11 +50,29 @@ internal class Powertrain(
         private val pickup = Powertrain(3.91f,.55f,.78f,false,.43f,115f,floatArrayOf(4.15f,2.30f,1.48f,1f,.79f))
         private val bus = Powertrain(4.56f,.52f,1.02f,false,.39f,152f,floatArrayOf(4.65f,2.62f,1.69f,1.24f,.97f,.77f))
         private val suv = Powertrain(3.91f,.54f,.73f,false,.50f,92f,floatArrayOf(3.88f,2.29f,1.53f,1.13f,.86f,.68f))
+        private val compactTaxi = Powertrain(3.92f,.62f,.49f,true,.58f,58f,floatArrayOf(3.73f,2.14f,1.48f,1.10f,.86f,.72f))
+        private val luxury = Powertrain(3.15f,.53f,.56f,false,.52f,76f,floatArrayOf(4.42f,2.71f,1.84f,1.41f,1.00f,.82f,.65f))
+        private val tourer = Powertrain(3.73f,.53f,.82f,false,.47f,104f,floatArrayOf(4.05f,2.32f,1.61f,1.18f,.87f,.70f))
+        private val desert = Powertrain(4.10f,.52f,.88f,false,.46f,122f,floatArrayOf(4.62f,2.80f,1.86f,1.39f,1.04f,.80f,.66f))
+        private val rescue = Powertrain(4.21f,.51f,.87f,false,.45f,130f,floatArrayOf(4.36f,2.66f,1.70f,1.22f,.92f,.76f))
+        private val heavy = Powertrain(4.88f,.49f,1.16f,false,.35f,185f,floatArrayOf(5.40f,3.73f,2.58f,1.89f,1.42f,1.10f,.89f,.73f))
+        private val sport = Powertrain(3.20f,.48f,.44f,false,.66f,70f,floatArrayOf(3.87f,2.59f,1.92f,1.47f,1.19f,.97f,.77f))
+        private val minibus = Powertrain(4.34f,.57f,.93f,false,.42f,137f,floatArrayOf(4.25f,2.57f,1.58f,1.15f,.87f,.74f))
+        private val lightPickup = Powertrain(4.10f,.58f,.71f,false,.44f,98f,floatArrayOf(4.00f,2.34f,1.47f,1f,.81f))
         fun forVehicle(id: VehicleId) = when(id) {
-            VehicleId.SAQR, VehicleId.NIMR, VehicleId.BADIYA -> pickup
-            VehicleId.HAFILAT, VehicleId.QAFILA, VehicleId.JABAL -> bus
-            VehicleId.MADINA, VehicleId.SAHIL -> sedan
-            else -> suv
+            VehicleId.SHAHIQ -> suv
+            VehicleId.SAQR -> pickup
+            VehicleId.MADINA -> sedan
+            VehicleId.ASIL -> luxury
+            VehicleId.HAFILAT -> bus
+            VehicleId.RAHHAL -> tourer
+            VehicleId.BADIYA -> desert
+            VehicleId.MUNQIDH -> rescue
+            VehicleId.JABAL -> heavy
+            VehicleId.BARQ -> sport
+            VehicleId.SAHIL -> compactTaxi
+            VehicleId.QAFILA -> minibus
+            VehicleId.NIMR -> lightPickup
         }
     }
 }
