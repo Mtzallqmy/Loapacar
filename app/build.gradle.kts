@@ -18,8 +18,8 @@ android {
         testInstrumentationRunner = "com.masalik.yemen.TouchDriveProbe"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "4.0.0"
+        versionCode = 11
+        versionName = "5.0.0"
     }
 
     signingConfigs {
@@ -54,8 +54,8 @@ android {
         }
         create("journeys") {
             initWith(getByName("preview"))
-            applicationIdSuffix = ".cities"
-            versionNameSuffix = "-cities-preview.1"
+            applicationIdSuffix = ".world"
+            versionNameSuffix = "-open-world-preview.1"
             ndk { abiFilters += "arm64-v8a" }
         }
         debug {

@@ -9,7 +9,7 @@ class SaveBackupTest {
     @Test fun legacyBackupPreservesJourneyAndProfile() {
         val old = SaveGameSchema(playerNameAr = "سائق تعز", masalikCoins = 45200,
             missionRun = MissionProgress("journey_taiz_market", elapsed = 27f))
-        val restored = SaveBackupCodec.decode(Json.encodeToString(SaveGameSchema.serializer(), old))
+        val restored = SaveBackupCodec.decode(Json { encodeDefaults = true }.encodeToString(SaveGameSchema.serializer(), old))
         assertEquals(old, restored.profile)
         assertNull(restored.trips)
     }

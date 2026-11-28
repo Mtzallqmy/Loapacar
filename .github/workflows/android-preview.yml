@@ -7,7 +7,6 @@ permissions:
   contents: read
 jobs:
   test-and-build:
-    if: "!contains(github.event.head_commit.message, '[verify-cities-apk]')"
     runs-on: ubuntu-24.04
     timeout-minutes: 58
     steps:
@@ -33,6 +32,8 @@ jobs:
       - name: Verify packaged native code and certificate
         run: |
           apk=app/build/outputs/apk/journeys/app-journeys.apk
+          mkdir -p signing-tools
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" signing-tools/apksigner.jar
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 "$apk"
           unzip -t "$apk" lib/arm64-v8a/libmycar_contacts.so
@@ -41,13 +42,17 @@ jobs:
           sha256sum "$apk" > app/build/outputs/apk/journeys/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: MyCar-4.0-Cities-Android8Plus-ARM64
+          name: MyCar-5.0-Open-World-Android8Plus-ARM64
           path: |
             app/build/outputs/apk/journeys/*.apk
             app/build/outputs/apk/journeys/SHA256SUMS
             app/build/outputs/apk/journeys/*.txt
             app/build/test-results/testDebugUnitTest/*.xml
             app/build/reports/lint-results-journeys.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Android-signing-tool
+          path: signing-tools/apksigner.jar
       - name: Build emulator companion
         run: |
           ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
@@ -65,47 +70,8 @@ jobs:
           path: emulator-apks/
           retention-days: 2
 
-  reuse-verified-build:
-    if: contains(github.event.head_commit.message, '[verify-cities-apk]')
-    runs-on: ubuntu-24.04
-    permissions:
-      actions: read
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Confirm all shipped game sources and build inputs match the signed build
-        run: git diff --exit-code bda281b7a1cb270dc4ff651bdac7b938d1d501f9 HEAD -- . ':!.github/**' ':!scripts/**' ':!docs/**' ':!README.md'
-      - uses: actions/download-artifact@v4
-        with:
-          github-token: ${{ github.token }}
-          run-id: 45481205985
-          name: emulator-apks
-          path: emulator-apks
-      - uses: actions/download-artifact@v4
-        with:
-          github-token: ${{ github.token }}
-          run-id: 45481205985
-          name: MyCar-4.0-Cities-Android8Plus-ARM64
-          path: verified
-      - name: Verify the unchanged signed APK in both packages
-        run: |
-          echo "5fbda8279227d33c9b1eabc3cf43933adf824c3b7dbc74d6632efcdbd65567a6  verified/outputs/apk/journeys/app-journeys.apk" | sha256sum -c -
-          cmp verified/outputs/apk/journeys/app-journeys.apk emulator-apks/cities.apk
-      - uses: actions/upload-artifact@v4
-        with:
-          name: emulator-apks
-          path: emulator-apks/
-          retention-days: 2
-      - uses: actions/upload-artifact@v4
-        with:
-          name: MyCar-4.0-Cities-Android8Plus-ARM64
-          path: verified/
-
   play-on-android:
-    needs: [test-and-build, reuse-verified-build]
-    if: ${{ !cancelled() && (needs.test-and-build.result == 'success' || needs.reuse-verified-build.result == 'success') }}
+    needs: test-and-build
     runs-on: ubuntu-24.04
     timeout-minutes: 46
     strategy:
