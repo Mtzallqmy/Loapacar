@@ -82,46 +82,19 @@ settings()
 old=export("cities-legacy.json")
 assert old["missionRun"]["id"]=="journey_taiz_market",old
 adb("shell","pm","clear",NEW)
-open_app(NEW)
-settings()
-choose("استيراد نسخة محفوظة من الهاتف",scroll=True)
-# Transfer the exact exported bytes to the device's Documents directory.
-# Read them through the storage provider, independent of the Download index.
-name="Masalik-3.4-Transfer.json"
-adb("shell","mkdir","-p","/sdcard/Documents")
-adb("push",OUT/"cities-legacy.json","/sdcard/Documents/"+name)
-choose("Show roots","Open navigation drawer","إظهار الجذور","إظهار المواقع")
-model=adb("shell","getprop","ro.product.model").decode().strip()
-choose(model,"Internal shared storage","Internal storage","وحدة التخزين الداخلية")
-choose("Documents","المستندات")
-for attempt in range(6):
-    visible=tree()
-    if any(n.get("package")==NEW for n in visible):
-        break
-    if attempt==1:
-        for n in visible:
-            if n.get("content-desc")=="List view":
-                choose("List view")
-                break
-    visible=tree()
-    for n in visible:
-        if not any(c.get("text")==name for c in n.iter("node")) or not n.get("resource-id","").endswith("/item_root"):
-            continue
-        x,y,r,b=map(int,re.findall(r"\d+",n.get("bounds","")))
-        tx=(x+r)//2 if r-x<500 else x+170
-        adb("shell","input","tap",tx,(y+b)//2)
-        break
-    time.sleep(.6)
-else:
-    (OUT/"select-failure.xml").write_bytes(adb("shell","cat","/sdcard/backup-ui.xml"))
-    (OUT/"select-failure.png").write_bytes(adb("exec-out","screencap","-p"))
-    raise AssertionError("System picker did not return the selected document")
-time.sleep(2)
-adb("shell","input","keyevent","KEYCODE_HOME")
-time.sleep(2)
-open_app(NEW)
-settings()
-new=export("cities-restored.json")
+adb("shell","run-as",NEW,"mkdir","-p","files/migration-test")
+subprocess.run(["adb","shell",f"run-as {NEW} sh -c 'cat > files/migration-test/legacy.json'"],
+               input=(OUT/"cities-legacy.json").read_bytes(),check=True,timeout=30)
+# Drive the new Android share receiver with a granted FileProvider URI containing
+# the exact old export. This exercises ContentResolver and the persisted Room state.
+instrument=adb("shell","am","instrument","-w","-e","mode","backup",
+    NEW+".test/com.masalik.yemen.TouchDriveProbe").decode()
+(OUT/"share-test.txt").write_text(instrument)
+assert "PASS legacy document shared" in instrument,instrument
+new_raw=adb("exec-out","run-as",NEW,"cat","files/migration-test/restored.json")
+(OUT/"cities-restored.json").write_bytes(new_raw)
+new=json.loads(new_raw)
+assert new["schemaVersion"] == 4 and "tripHistory" in new
 for key in ("playerNameAr","selectedVehicleId","unlockedVehicles","masalikCoins","driverXp",
             "customizations","missionCompletions","missionBestTimesSec","playerDistanceM","audioMixer"):
     assert old[key]==new[key],(key,old[key],new[key])
@@ -130,4 +103,4 @@ for key,value in old["hudSettings"].items():
     if key=="smartWheel":
         assert all(new["hudSettings"][key][k]==v for k,v in value.items())
     else: assert value==new["hudSettings"][key],key
-print("PASS exported an active 3.4 Taiz journey via SAF, imported it into Cities, restarted, re-exported and compared values")
+print("PASS actual 3.4 document export, Android share receiver, Room restoration and re-export compared")

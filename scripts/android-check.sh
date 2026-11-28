@@ -6,6 +6,7 @@ case "$1" in
         grep -q 'PASS two pointers' journey-captures/touch.txt
         ;;
     migration)
+        adb install emulator-apks/touch.apk
         adb install emulator-apks/legacy.apk
         python3 scripts/backup-handoff.py
         ;;

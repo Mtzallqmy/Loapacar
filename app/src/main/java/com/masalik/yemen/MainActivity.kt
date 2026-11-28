@@ -2,6 +2,8 @@ package com.masalik.yemen
 
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.graphics.Bitmap
 import android.opengl.GLSurfaceView
 import android.os.Build
@@ -70,6 +72,7 @@ import kotlinx.coroutines.delay
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MasalikGameViewModel by viewModels()
+    private var incomingBackup by mutableStateOf<Uri?>(null)
     private var glSurfaceViewRef: GLSurfaceView? = null
     private val screenshotPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) saveGameScreenshot() else viewModel.notifyScreenshotSaved(false)
@@ -92,6 +95,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         hideSystemBarsImmersive()
+        receiveSharedBackup(intent)
         // Test-only entry point for a repeatable emulator smoke check. Release builds ignore it.
         if (BuildConfig.DEBUG && intent.getBooleanExtra("masalik_test_cockpit", false)) {
             viewModel.setCameraMode(com.masalik.yemen.game.CameraMode.COCKPIT)
@@ -126,6 +130,8 @@ class MainActivity : ComponentActivity() {
             MasalikTheme {
                 MasalikRootScreen(
                     vm = viewModel,
+                    incomingBackup = incomingBackup,
+                    dismissIncomingBackup = { incomingBackup = null },
                     onBindGLView = { glSurfaceViewRef = it },
                     onCaptureScreenshot = {
                         requestGameScreenshot()
@@ -133,6 +139,20 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun receiveSharedBackup(message: Intent?) {
+        if (message?.action != Intent.ACTION_SEND) return
+        val uri = if (Build.VERSION.SDK_INT >= 33) message.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            else message.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+        incomingBackup = uri?.takeIf { it.scheme == "content" }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        receiveSharedBackup(intent)
     }
 
     override fun onResume() {
@@ -190,6 +210,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun MasalikRootScreen(
     vm: MasalikGameViewModel,
+    incomingBackup: Uri?,
+    dismissIncomingBackup: () -> Unit,
     onBindGLView: (GLSurfaceView?) -> Unit,
     onCaptureScreenshot: () -> Unit
 ) {
@@ -205,6 +227,24 @@ private fun MasalikRootScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let { vm.backupDocument(it, importing = true) } }
 
+    if (incomingBackup != null && state.profileReady && !state.backupBusy) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = dismissIncomingBackup,
+            title = { Text("استيراد نسخة اللعبة") },
+            text = { Text("سيُستبدل الملف الشخصي بالنسخة المختارة، وتُدمج الرحلات السابقة. هل تريد المتابعة؟") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    vm.setModal(ActiveModal.SETTINGS)
+                    vm.releaseDriverInputs()
+                    vm.backupDocument(incomingBackup, importing = true)
+                    dismissIncomingBackup()
+                }) { Text("استيراد الحفظ") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = dismissIncomingBackup) { Text("إلغاء") }
+            }
+        )
+    }
     if (state.backupBusy) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = {},

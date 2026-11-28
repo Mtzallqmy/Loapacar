@@ -16,10 +16,16 @@ import kotlin.math.abs
 
 /** Inject two touchscreen pointers into the actual driving view on Android. */
 class TouchDriveProbe : Instrumentation() {
-    override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); start() }
+    private var backupMode = false
+    override fun onCreate(arguments: Bundle?) {
+        super.onCreate(arguments)
+        backupMode = arguments?.getString("mode") == "backup"
+        start()
+    }
 
     override fun onStart() {
         val result = Bundle()
+        if (backupMode) { backupProbe(result); return }
         var stage="start"
         try {
             val launch=Intent(targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -71,6 +77,58 @@ class TouchDriveProbe : Instrumentation() {
             finish(Activity.RESULT_OK,result)
         } catch (error:Throwable) {
             result.putString("stream","FAIL during $stage: "+android.util.Log.getStackTraceString(error))
+            finish(Activity.RESULT_CANCELED,result)
+        }
+    }
+
+    private fun backupProbe(result: Bundle) {
+        try {
+            val context = targetContext
+            val directory = java.io.File(context.filesDir, "migration-test")
+            val original = java.io.File(directory, "legacy.json")
+            val expected = org.json.JSONObject(original.readText())
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context, context.packageName + ".migration-test", original)
+            val launch = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .setAction(Intent.ACTION_SEND).setType("application/json")
+                .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val activity = startActivitySync(launch) as MainActivity
+            lateinit var vm: MasalikGameViewModel
+            runOnMainSync { vm = ViewModelProvider(activity)[MasalikGameViewModel::class.java] }
+            await { vm.uiState.value.profileReady }
+            await { uiAutomation.rootInActiveWindow != null }
+            // Touch the real share-import confirmation dialog through accessibility.
+            await {
+                fun choose(node: AccessibilityNodeInfo?): Boolean {
+                    if (node == null) return false
+                    if (node.text?.toString()=="استيراد الحفظ") {
+                        var clickable: AccessibilityNodeInfo? = node
+                        while (clickable != null && !clickable.isClickable) clickable = clickable.parent
+                        return clickable?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+                    }
+                    for (i in 0 until node.childCount) if (choose(node.getChild(i))) return true
+                    return false
+                }
+                choose(uiAutomation.rootInActiveWindow)
+            }
+            await { !vm.uiState.value.backupBusy && vm.uiState.value.saveState.missionRun?.id == expected.getJSONObject("missionRun").getString("id") }
+            val db = com.masalik.yemen.data.MasalikDatabase.getInstance(context)
+            val repo = com.masalik.yemen.data.MasalikRepository(context,db)
+            kotlinx.coroutines.runBlocking {
+                val restored = repo.loadSaveGame()
+                check(restored.masalikCoins == expected.getInt("masalikCoins"))
+                check(restored.driverXp == expected.getInt("driverXp"))
+                check(restored.selectedVehicleId.name == expected.getString("selectedVehicleId"))
+                check(restored.missionRun?.id == expected.getJSONObject("missionRun").getString("id"))
+                val exported = repo.exportSaveJson(restored)
+                java.io.File(directory,"restored.json").writeText(exported)
+                val document = org.json.JSONObject(exported)
+                check(document.getInt("schemaVersion") == 4 && document.has("tripHistory"))
+            }
+            result.putString("stream","PASS legacy document shared through Android, ContentResolver, validation, committed Room profile and export")
+            finish(Activity.RESULT_OK,result)
+        } catch (error: Throwable) {
+            result.putString("stream","FAIL backup handoff: "+android.util.Log.getStackTraceString(error))
             finish(Activity.RESULT_CANCELED,result)
         }
     }
