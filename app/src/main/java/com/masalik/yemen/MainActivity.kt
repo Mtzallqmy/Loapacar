@@ -49,6 +49,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.masalik.yemen.renderer.MasalikGLRenderer
+import com.masalik.yemen.renderer.FramePacedSurfaceView
 import com.masalik.yemen.ui.ActiveModal
 import com.masalik.yemen.ui.MasalikGameViewModel
 import com.masalik.yemen.ui.screens.ControlStudioScreen
@@ -246,15 +247,16 @@ private fun MasalikRootScreen(
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
-                GLSurfaceView(ctx).apply {
+                FramePacedSurfaceView(ctx).apply {
                     setEGLContextClientVersion(3)
                     preserveEGLContextOnPause = true
                     setRenderer(MasalikGLRenderer(ctx.assets, onFirstFrame = { Handler(Looper.getMainLooper()).post { worldReady = true } }) { dtSec -> vm.stepSimulationFrame(dtSec) })
-                    renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
+                    renderMode = GLSurfaceView.RENDERMODE_WHEN_DIRTY
                     onBindGLView(this)
                 }
             },
             update = { view ->
+                view.targetFps = state.saveState.hudSettings.targetFps
                 val scale = when (state.saveState.graphicsQuality) {
                     com.masalik.yemen.game.GraphicsQuality.LOW -> 0.65f
                     com.masalik.yemen.game.GraphicsQuality.MEDIUM -> 0.85f

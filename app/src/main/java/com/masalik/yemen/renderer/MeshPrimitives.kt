@@ -32,8 +32,8 @@ class GpuMesh(vertices: FloatArray) {
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, 0)
     }
 
-    fun draw() {
-        if (vertexCount <= 0) return
+    fun draw(instances: Int = 1) {
+        if (vertexCount <= 0 || instances <= 0) return
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vboId)
         val stride = 8 * 4
         GLES30.glEnableVertexAttribArray(0)
@@ -42,7 +42,8 @@ class GpuMesh(vertices: FloatArray) {
         GLES30.glVertexAttribPointer(1, 3, GLES30.GL_FLOAT, false, stride, 3 * 4)
         GLES30.glEnableVertexAttribArray(2)
         GLES30.glVertexAttribPointer(2, 2, GLES30.GL_FLOAT, false, stride, 6 * 4)
-        GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, vertexCount)
+        if (instances == 1) GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, vertexCount)
+        else GLES30.glDrawArraysInstanced(GLES30.GL_TRIANGLES, 0, vertexCount, instances)
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, 0)
     }
 

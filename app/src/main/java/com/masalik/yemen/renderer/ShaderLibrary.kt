@@ -12,6 +12,8 @@ class ShaderLibrary {
     // World shader uniform locations
     val uMvpMatrix: Int
     val uModelMatrix: Int
+    val uInstanced: Int
+    val uViewProjection: Int
     val uBaseColor: Int
     val uEmissive: Int
     val uSunDir: Int
@@ -56,6 +58,8 @@ class ShaderLibrary {
 
         uMvpMatrix = GLES30.glGetUniformLocation(worldProgram, "uMvpMatrix")
         uModelMatrix = GLES30.glGetUniformLocation(worldProgram, "uModelMatrix")
+        uInstanced = GLES30.glGetUniformLocation(worldProgram, "uInstanced")
+        uViewProjection = GLES30.glGetUniformLocation(worldProgram, "uViewProjection")
         uBaseColor = GLES30.glGetUniformLocation(worldProgram, "uBaseColor")
         uEmissive = GLES30.glGetUniformLocation(worldProgram, "uEmissive")
         uSunDir = GLES30.glGetUniformLocation(worldProgram, "uSunDir")
@@ -126,9 +130,12 @@ class ShaderLibrary {
             layout(location = 0) in vec3 aPosition;
             layout(location = 1) in vec3 aNormal;
             layout(location = 2) in vec2 aTexCoord;
+            layout(location = 3) in mat4 aInstanceModel;
 
             uniform mat4 uMvpMatrix;
             uniform mat4 uModelMatrix;
+            uniform mat4 uViewProjection;
+            uniform bool uInstanced;
             uniform vec2 uUvScale;
 
             out vec3 vWorldPos;
@@ -136,13 +143,14 @@ class ShaderLibrary {
             out vec2 vTexCoord;
 
             void main() {
-                vec4 worldPos = uModelMatrix * vec4(aPosition, 1.0);
+                mat4 model = uInstanced ? aInstanceModel : uModelMatrix;
+                vec4 worldPos = model * vec4(aPosition, 1.0);
                 vWorldPos = worldPos.xyz;
-                mat3 axes = mat3(uModelMatrix);
+                mat3 axes = mat3(model);
                 vec3 scaleSquared = vec3(dot(axes[0],axes[0]),dot(axes[1],axes[1]),dot(axes[2],axes[2]));
                 vNormal = normalize(axes * (aNormal / max(scaleSquared, vec3(0.000001))));
                 vTexCoord = aTexCoord * uUvScale;
-                gl_Position = uMvpMatrix * vec4(aPosition, 1.0);
+                gl_Position = uInstanced ? uViewProjection * worldPos : uMvpMatrix * vec4(aPosition, 1.0);
             }
         """
 

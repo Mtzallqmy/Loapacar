@@ -78,7 +78,8 @@ class MasalikGLRenderer(
         val orbitPitchRad: Float = 0.24f
     )
 
-    private var frameStartNs: Long = 0L
+    private lateinit var urbanBatch: UrbanInstanceBatch
+    private var collectUrban = false
     private lateinit var cabinDisplays: CabinDisplays
     private lateinit var mirrorGlass: GpuMesh
     private var lastCabinMirrorSeconds = -1f
@@ -149,6 +150,7 @@ class MasalikGLRenderer(
 
         frameProbe = FrameProbe()
         shaders = ShaderLibrary()
+        urbanBatch = UrbanInstanceBatch()
         cabinDisplays = CabinDisplays()
         lastCabinMirrorSeconds = -1f
         mirrorGlass = GpuMesh(CabinGeometry.panel(.299f, .095f, mirror = true))
@@ -216,15 +218,6 @@ class MasalikGLRenderer(
 
         val snap = onStepFrame(frameSeconds)
         frameQuality = snap.graphicsQuality
-        val frameBudgetNs = 1_000_000_000L / snap.targetFps.coerceIn(30, 60)
-        val sinceLastFrame = System.nanoTime() - frameStartNs
-        if (sinceLastFrame < frameBudgetNs) {
-            val pauseNs = frameBudgetNs - sinceLastFrame
-            try { Thread.sleep(pauseNs / 1_000_000L, (pauseNs % 1_000_000L).toInt()) }
-            catch (_: InterruptedException) { Thread.currentThread().interrupt() }
-        }
-        frameStartNs = System.nanoTime()
-
         val atmo = LivingWorldSimulation.sampleAtmosphere(snap.worldTimeHours, snap.weather)
         val t = snap.telemetry
 
@@ -344,7 +337,10 @@ class MasalikGLRenderer(
             }
         }
 
+        collectUrban = true
         drawYemeniCityEnvironment(centerDist, snap, atmo)
+        collectUrban = false
+        urbanBatch.flush(cubeMesh, shaders, vpMatrix, textures.whiteTex)
         if (!snap.isLobbyOrGarage) drawMarketStalls(centerDist, atmo)
         if (snap.livingWorld.deliveryActive && abs(centerDist-199f)<220f) {
             val bay=com.masalik.yemen.game.MarketDelivery
@@ -2435,6 +2431,10 @@ class MasalikGLRenderer(
         if (abs(pitchDeg) > 0.01f) Matrix.rotateM(modelMatrix, 0, pitchDeg, 1f, 0f, 0f)
         if (abs(rollDeg) > 0.01f) Matrix.rotateM(modelMatrix, 0, rollDeg, 0f, 0f, 1f)
         Matrix.scaleM(modelMatrix, 0, sx, sy, sz)
+        if (collectUrban && mesh === cubeMesh) {
+            urbanBatch.add(UrbanMaterial(texId, r, g, b, uvScaleX, uvScaleY, emR, emG, emB, metallic, roughness), modelMatrix)
+            return
+        }
         val useTex = if (texId != textures.whiteTex) 1f else 0f
         drawMeshWithCurrentMatrix(mesh, r, g, b, texId, useTex, uvScaleX, uvScaleY, emR, emG, emB, metallic, roughness)
     }
